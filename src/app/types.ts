@@ -52,6 +52,29 @@ export type LogEntry = {
   message: string;
 };
 
+export type ToolVersion = {
+  name: string;
+  versionLine: string;
+  configurationLine?: string;
+};
+
+export type FfmpegHealth = {
+  targetTriple: string;
+  ffmpeg: ToolVersion;
+  ffprobe: ToolVersion;
+};
+
+export type AppErrorPayload = {
+  category: string;
+  message: string;
+  detail?: string;
+};
+
+export type SidecarHealthState =
+  | { status: "loading" }
+  | { status: "ready"; health: FfmpegHealth }
+  | { status: "error"; error: AppErrorPayload };
+
 export type AppShellState = {
   activeFeatureId: FeatureId;
   inspectorTab: InspectorTab;

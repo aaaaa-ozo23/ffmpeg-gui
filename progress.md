@@ -129,5 +129,66 @@
 | 我学到了什么？ | 见 findings.md |
 | 我做了什么？ | 见上方阶段 2 记录 |
 
+### 阶段 3：FFmpeg sidecar 与 Rust 后端基础
+- **状态：** complete
+- 执行的操作：
+  - 确认当前分支为 `codex/ffmpeg-sidecar-backend`。
+  - 新增 `scripts/prepare-ffmpeg-sidecar.ps1` 和 `scripts/check-ffmpeg-sidecar.ps1`。
+  - 新增 `src-tauri/binaries/README.md`，记录 Gyan FFmpeg `8.0.1-full_build-www.gyan.dev`、GPL v3、目标 triple 和准备命令。
+  - 更新 `.gitignore`，忽略本地 sidecar exe 和 `sidecar-manifest.json`，保留 README。
+  - 更新 `package.json`，新增 `sidecar:prepare` / `sidecar:check`，并让 `tauri:dev` / `tauri:build` 先跑 sidecar 检查。
+  - 更新 `tauri.conf.json`，配置 `bundle.externalBin`。
+  - 移除前端 `shell:default` capability，sidecar 只通过 Rust 后端调用。
+  - 新增 Rust 统一错误模型、sidecar 执行器、参数数组构造、版本解析和进度行解析。
+  - 注册 `check_ffmpeg_health` Tauri 命令。
+  - 前端顶部状态区接入健康检查；普通浏览器预览显示 Tauri runtime fallback。
+  - 更新 `index.html` 标题为 `FFmpeg GUI`。
+- 创建/修改的文件：
+  - `.gitignore`
+  - `index.html`
+  - `package.json`
+  - `scripts/*`
+  - `src-tauri/binaries/README.md`
+  - `src-tauri/capabilities/default.json`
+  - `src-tauri/tauri.conf.json`
+  - `src-tauri/src/commands/*`
+  - `src-tauri/src/errors.rs`
+  - `src-tauri/src/ffmpeg/*`
+  - `src-tauri/src/lib.rs`
+  - `src/app/App.tsx`
+  - `src/app/types.ts`
+  - `src/lib/*`
+  - `src/styles/global.css`
+
+## 阶段 3 测试结果
+| 测试 | 输入 | 预期结果 | 实际结果 | 状态 |
+|------|------|---------|---------|------|
+| sidecar 准备 | `pnpm.cmd run sidecar:prepare` | 复制 ffmpeg/ffprobe 到 `src-tauri/binaries` | 生成两个 exe 和本地 manifest | pass |
+| sidecar 检查 | `pnpm.cmd run sidecar:check` | 两个工具版本匹配固定版本 | FFmpeg/FFprobe 均为 `8.0.1-full_build-www.gyan.dev` | pass |
+| Rust 格式检查 | `cargo fmt --check` | 无格式变更需求 | 通过 | pass |
+| Rust 单元测试 | `cargo test` | 参数数组、进度解析、版本解析、错误序列化测试通过 | 10 个测试通过 | pass |
+| 前端构建 | `pnpm.cmd build` | TypeScript 与 Vite 构建通过 | 构建通过 | pass |
+| Tauri release 构建 | `pnpm.cmd run tauri:build` | 先检查 sidecar，再完成 release 构建和 bundle | 通过，生成 exe、MSI、NSIS；仍有 `.app` identifier 已知警告 | pass |
+| Tauri dev 冒烟 | `pnpm.cmd run tauri:dev` | sidecar 检查、Vite ready、Rust debug 编译并启动 app | 通过；后续手动终止进程树导致退出码 `0xffffffff` | pass |
+| 浏览器 fallback | Browser 打开 `http://localhost:1420` | 普通 Vite 环境不崩溃并显示 Tauri runtime fallback | 页面非空、标题 `FFmpeg GUI`、无 console warn/error、fallback 文案可见 | pass |
+| 缺失 sidecar 检查 | 临时隐藏 `ffprobe-x86_64-pc-windows-msvc.exe` | 明确提示缺失并给出准备命令 | 输出 `Missing ffprobe sidecar... Run: pnpm.cmd run sidecar:prepare` | pass |
+
+## 阶段 3 错误日志
+| 时间戳 | 错误 | 尝试次数 | 解决方案 |
+|--------|------|---------|---------|
+| 2026-06-10 | `cargo fmt --check` 首次发现新 Rust 文件格式不符合 rustfmt | 1 | 运行 `cargo fmt` 后复验通过 |
+| 2026-06-10 | `tauri::generate_handler![commands::check_ffmpeg_health]` 不能通过 re-export 找到命令宏符号 | 1 | 改为直接注册 `commands::media::check_ffmpeg_health` |
+| 2026-06-10 | 缺失 sidecar 模拟脚本首次误判外部命令退出码 | 1 | 使用 `$LASTEXITCODE` 判断 `pnpm.cmd` 退出码 |
+| 2026-06-10 | 缺失 sidecar 模拟与正常检查并行操作同一 ffprobe 文件 | 1 | 改为顺序执行并先恢复 sidecar |
+
+## 阶段 3 五问重启检查
+| 问题 | 答案 |
+|------|------|
+| 我在哪里？ | 阶段 3：FFmpeg sidecar 与 Rust 后端基础已完成 |
+| 我要去哪里？ | 下一阶段应进入阶段 4：文件导入与媒体探测 |
+| 目标是什么？ | 建立项目内 FFmpeg/FFprobe sidecar 调用、错误模型和健康检查通道 |
+| 我学到了什么？ | 见 findings.md |
+| 我做了什么？ | 见上方阶段 3 记录 |
+
 ---
 *每个阶段完成后或遇到错误时更新此文件*

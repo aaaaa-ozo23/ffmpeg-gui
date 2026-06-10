@@ -1,15 +1,32 @@
-import { useMemo, useState } from "react";
-import { Activity, ClipboardList, Cpu, FolderOpen } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  ClipboardList,
+  Cpu,
+  FolderOpen,
+  LoaderCircle,
+} from "lucide-react";
 import { featureConfigs, mockLogs, mockMedia, mockTasks } from "./mockData";
-import type { FeatureId, InspectorTab } from "./types";
+import type {
+  AppErrorPayload,
+  FeatureId,
+  InspectorTab,
+  SidecarHealthState,
+} from "./types";
 import { AppSidebar } from "../components/AppSidebar";
 import { InspectorPanel } from "../components/InspectorPanel";
 import { FeatureWorkspace } from "../features/FeatureWorkspace";
+import { checkFfmpegHealth } from "../lib";
 
 function App() {
   const [activeFeatureId, setActiveFeatureId] =
     useState<FeatureId>("convert");
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("tasks");
+  const [sidecarHealth, setSidecarHealth] = useState<SidecarHealthState>({
+    status: "loading",
+  });
 
   const activeFeature = useMemo(
     () =>
@@ -17,6 +34,47 @@ function App() {
       featureConfigs[0],
     [activeFeatureId],
   );
+
+  useEffect(() => {
+    let canceled = false;
+
+    checkFfmpegHealth()
+      .then((health) => {
+        if (!canceled) {
+          setSidecarHealth({ status: "ready", health });
+        }
+      })
+      .catch((error: unknown) => {
+        if (!canceled) {
+          setSidecarHealth({
+            status: "error",
+            error: error as AppErrorPayload,
+          });
+        }
+      });
+
+    return () => {
+      canceled = true;
+    };
+  }, []);
+
+  const sidecarStatusTitle = useMemo(() => {
+    if (sidecarHealth.status === "ready") {
+      return [
+        `target: ${sidecarHealth.health.targetTriple}`,
+        sidecarHealth.health.ffmpeg.versionLine,
+        sidecarHealth.health.ffprobe.versionLine,
+      ].join("\n");
+    }
+
+    if (sidecarHealth.status === "error") {
+      return [sidecarHealth.error.message, sidecarHealth.error.detail]
+        .filter(Boolean)
+        .join("\n");
+    }
+
+    return "正在检查项目内 FFmpeg/FFprobe sidecar";
+  }, [sidecarHealth]);
 
   return (
     <main className="app-window">
@@ -47,12 +105,43 @@ function App() {
         <div className="workspace-status" aria-label="开发状态">
           <div className="status-metric">
             <Activity size={16} aria-hidden="true" />
-            <span>UI mock 模式</span>
+            <span>结构化参数 UI</span>
           </div>
-          <div className="status-metric">
-            <Cpu size={16} aria-hidden="true" />
-            <span>后端接口待接入</span>
-          </div>
+
+          {sidecarHealth.status === "ready" ? (
+            <>
+              <div
+                className="status-metric status-metric-ready"
+                title={sidecarStatusTitle}
+              >
+                <CheckCircle2 size={16} aria-hidden="true" />
+                <span>{sidecarHealth.health.ffmpeg.versionLine}</span>
+              </div>
+              <div
+                className="status-metric status-metric-ready"
+                title={sidecarStatusTitle}
+              >
+                <Cpu size={16} aria-hidden="true" />
+                <span>{sidecarHealth.health.ffprobe.versionLine}</span>
+              </div>
+            </>
+          ) : (
+            <div
+              className={`status-metric status-metric-${sidecarHealth.status}`}
+              title={sidecarStatusTitle}
+            >
+              {sidecarHealth.status === "loading" ? (
+                <LoaderCircle size={16} aria-hidden="true" />
+              ) : (
+                <AlertTriangle size={16} aria-hidden="true" />
+              )}
+              <span>
+                {sidecarHealth.status === "loading"
+                  ? "正在检查 FFmpeg sidecar"
+                  : `${sidecarHealth.error.message}：pnpm.cmd run sidecar:prepare`}
+              </span>
+            </div>
+          )}
         </div>
 
         <FeatureWorkspace activeFeature={activeFeature} media={mockMedia} />

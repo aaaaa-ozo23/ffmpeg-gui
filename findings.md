@@ -30,6 +30,14 @@
 - 阶段 2 严格只做 UI 壳和 mock 状态，未接入真实 Tauri dialog、FFmpeg、ffprobe、sidecar 或后端命令。
 - 视觉验证时 in-app Browser 工具未暴露可调用接口；已用 Microsoft Edge headless 截图作为回退验证。
 - 1120x720 桌面截图验证三栏布局可用，外层页面不滚动，中间工作区内部滚动；740x900 窄屏截图验证内容纵向堆叠且无明显重叠。
+- 阶段 3 采用本地未跟踪 sidecar 策略：`src-tauri/binaries/*.exe` 和 `sidecar-manifest.json` 被 Git 忽略，只跟踪 README 与准备/检查脚本。
+- 当前固定 sidecar 来源为 Gyan FFmpeg `8.0.1-full_build-www.gyan.dev` full build，两个 exe 合计约 422 MB，许可证为 GPL v3。
+- `pnpm.cmd run sidecar:prepare` 会从本机 `Get-Command ffmpeg.exe` / `ffprobe.exe` 或显式 `-FfmpegBinDir` 复制为 Tauri 期望的 `ffmpeg-x86_64-pc-windows-msvc.exe` / `ffprobe-x86_64-pc-windows-msvc.exe`。
+- `pnpm.cmd run sidecar:check` 会直接运行项目内 sidecar 的 `-version`，不依赖系统 PATH，并在文件缺失或版本不匹配时给出可操作错误。
+- Tauri bundle 已配置 `externalBin: ["binaries/ffmpeg", "binaries/ffprobe"]`，release 目录会生成 `ffmpeg.exe` 和 `ffprobe.exe`。
+- Rust 端新增 `check_ffmpeg_health`，通过 `tauri_plugin_shell::ShellExt` 启动 sidecar 并返回 `{ targetTriple, ffmpeg, ffprobe }`。
+- Rust 错误模型统一返回 `{ category, message, detail }`，包含 sidecar 缺失、启动失败、非零退出码和输出解析失败分类。
+- 前端顶部状态区已接入健康检查；Tauri runtime 中显示 FFmpeg/FFprobe version line，普通 Vite 浏览器预览显示“需要 Tauri 桌面运行时”fallback。
 
 ## 技术决策
 | 决策 | 理由 |
@@ -46,6 +54,9 @@
 | 阶段 2 只使用 React 本地状态和 mock 数据 | 符合阶段范围，避免提前进入媒体探测或任务执行 |
 | 阶段 2 使用 `lucide-react` 图标 | 能保持工具按钮和导航图标一致，并符合 UI 控件识别习惯 |
 | 阶段 2 不展示命令预览 | 避免前端拼接 FFmpeg 命令字符串，后续由 Rust 后端负责参数构造 |
+| 阶段 3 sidecar 不提交 exe 到 Git | Gyan full build 单个 exe 超过 200 MB，直接提交会显著增大仓库且可能触发远程限制 |
+| 阶段 3 移除前端 `shell:default` capability | sidecar 只从 Rust 命令启动，前端不需要直接 shell 权限 |
+| 阶段 3 严格不做媒体探测 | 保持阶段边界，`ffprobe -show_streams` 留到阶段 4 |
 
 ## 遇到的问题
 | 问题 | 解决方案 |
@@ -53,6 +64,9 @@
 | `pnpm.cmd install` 首次返回 `ERR_PNPM_IGNORED_BUILDS`，提示 esbuild 构建脚本被忽略 | 在 `pnpm-workspace.yaml` 中设置 `allowBuilds.esbuild: true` 后重新安装成功 |
 | `pnpm.cmd tauri build` 警告 bundle identifier 以 `.app` 结尾 | 记录为当前已知警告；该值来自阶段 1 确认方案，Windows 构建不阻塞 |
 | Browser 插件工具搜索未暴露可调用浏览器控制接口 | 使用 Microsoft Edge headless 生成桌面和窄屏截图作为视觉验证回退 |
+| `generate_handler![commands::check_ffmpeg_health]` 无法通过 re-export 找到 Tauri 命令宏符号 | 改为直接注册 `commands::media::check_ffmpeg_health` |
+| 缺失 sidecar 模拟测试首次包装方式误判外部命令退出码 | 改用 `$LASTEXITCODE` 和合并 stdout/stderr 后重新验证 |
+| 缺失 sidecar 模拟与正常检查并行操作同一个 ffprobe 文件导致检查互相干扰 | 改为顺序执行，先恢复再模拟缺失 |
 
 ## 规划结论
 - 开发计划已写入 task_plan.md。
@@ -60,6 +74,7 @@
 - M2 可作为 MVP 可用节点，M4 可作为 Windows 首版交付节点。
 - 阶段 1 已完成。
 - 阶段 2 已完成，下一阶段应进入“FFmpeg sidecar 与 Rust 后端基础”。
+- 阶段 3 已完成，下一阶段应进入“文件导入与媒体探测”。
 
 ## 资源
 - README.md

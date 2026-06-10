@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Local FFmpeg sidecars are large and must be prepared per machine.
+src-tauri/binaries/*.exe
+src-tauri/binaries/sidecar-manifest.json
+!src-tauri/binaries/README.md
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

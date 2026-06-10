@@ -5,8 +5,8 @@
 
 ## 当前状态
 - 规划制定：complete
-- 实际开发：阶段 2 complete
-- 当前建议开始阶段：阶段 3：FFmpeg sidecar 与 Rust 后端基础
+- 实际开发：阶段 3 complete
+- 当前建议开始阶段：阶段 4：文件导入与媒体探测
 
 ## 范围边界
 
@@ -113,18 +113,18 @@
 - [x] 不出现“前端直接拼命令字符串”的实现入口。
 
 ## 阶段 3：FFmpeg sidecar 与 Rust 后端基础
-**状态：pending**
+**状态：complete**
 
 ### 目标
 建立后端命令调用、安全参数构造、错误模型和 sidecar 解析能力，为后续所有功能提供统一通道。
 
 ### 主要任务
-- 在 `src-tauri/binaries/` 放置固定版本：
+- [x] 在 `src-tauri/binaries/` 通过本地未跟踪策略放置固定版本：
   - `ffmpeg-x86_64-pc-windows-msvc.exe`
   - `ffprobe-x86_64-pc-windows-msvc.exe`
-- 记录 FFmpeg 来源、版本、构建配置和下载日期。
-- 在 `tauri.conf.json` 配置 `bundle.externalBin`。
-- 建立 Rust 模块：
+- [x] 记录 FFmpeg 来源、版本、许可证、目标 triple 和准备命令。
+- [x] 在 `tauri.conf.json` 配置 `bundle.externalBin`。
+- [x] 建立 Rust 模块：
   - `commands/mod.rs`
   - `commands/media.rs`
   - `commands/jobs.rs`
@@ -133,24 +133,27 @@
   - `ffmpeg/probe.rs`
   - `ffmpeg/presets.rs`
   - `errors.rs`
-- 封装统一执行层：
+- [x] 封装统一执行层：
   - sidecar 路径解析。
   - args 数组构造。
   - stdout/stderr 捕获。
   - 退出码处理。
   - 结构化错误返回。
-- 禁止 shell 字符串拼接，所有调用使用命令 + 参数数组。
+- [x] 禁止 shell 字符串拼接，所有调用使用命令 + 参数数组。
+- [x] 添加 `sidecar:prepare` / `sidecar:check` npm scripts。
+- [x] 前端顶部状态区接入 `check_ffmpeg_health`，普通浏览器预览显示 Tauri runtime fallback。
 
 ### 输出物
 - 可调用 `ffmpeg -version` / `ffprobe -version` 的后端命令。
 - 统一错误类型。
 - 基础命令构造工具。
+- 本地 sidecar 准备/检查脚本和 `src-tauri/binaries/README.md`。
 
 ### 验收标准
-- 不把 FFmpeg 加入系统 PATH 也能从应用内调用。
-- 中文路径、空格路径通过参数数组传递。
-- sidecar 缺失时能给出明确错误。
-- 前端能调用一个健康检查命令显示 FFmpeg/FFprobe 版本。
+- [x] 不把 FFmpeg 加入系统 PATH 也能从应用内调用。
+- [x] 中文路径、空格路径通过参数数组传递。
+- [x] sidecar 缺失时能给出明确错误。
+- [x] 前端能调用一个健康检查命令显示 FFmpeg/FFprobe 版本。
 
 ## 阶段 4：文件导入与媒体探测
 **状态：pending**

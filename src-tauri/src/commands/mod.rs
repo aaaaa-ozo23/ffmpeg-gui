@@ -1,1 +1,4 @@
-// Command modules will be added as feature slices are implemented.
+pub mod jobs;
+pub mod media;
+
+pub use media::check_ffmpeg_health;

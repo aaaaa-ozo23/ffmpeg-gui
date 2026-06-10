@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod config;
+pub mod errors;
 pub mod ffmpeg;
 pub mod jobs;
 
@@ -9,6 +10,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .invoke_handler(tauri::generate_handler![
+            commands::media::check_ffmpeg_health
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

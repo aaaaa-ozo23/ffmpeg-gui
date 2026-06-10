@@ -8,8 +8,10 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "sidecar:prepare": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-ffmpeg-sidecar.ps1",
+    "sidecar:check": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/check-ffmpeg-sidecar.ps1",
+    "tauri:dev": "pnpm.cmd run sidecar:check && tauri dev",
+    "tauri:build": "pnpm.cmd run sidecar:check && tauri build"
   },
   "packageManager": "pnpm@11.1.2",
   "dependencies": {

@@ -279,6 +279,7 @@ h3 {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  max-width: 100%;
   min-height: 30px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -286,6 +287,41 @@ h3 {
   color: var(--muted);
   background: var(--surface-soft);
   font-size: 0.82rem;
+}
+
+.status-metric span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-metric-ready {
+  color: var(--success);
+  border-color: #b7dfc9;
+  background: #e5f5ed;
+}
+
+.status-metric-loading {
+  color: var(--accent-strong);
+  border-color: #c8e3ea;
+  background: var(--accent-soft);
+}
+
+.status-metric-error {
+  color: var(--danger);
+  border-color: #f3bbb5;
+  background: #fff2f0;
+}
+
+.status-metric-loading svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .feature-stack {
