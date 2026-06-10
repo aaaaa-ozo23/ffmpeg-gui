@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppErrorPayload, FfmpegHealth } from "../app/types";
+import { open } from "@tauri-apps/plugin-dialog";
+import type { AppErrorPayload, FfmpegHealth, MediaInfo } from "../app/types";
+import { MEDIA_DIALOG_FILTERS } from "./mediaFormats";
 
 const TAURI_UNAVAILABLE_ERROR: AppErrorPayload = {
   category: "tauriUnavailable",
@@ -15,7 +17,10 @@ function isTauriRuntime() {
   );
 }
 
-function normalizeAppError(error: unknown): AppErrorPayload {
+function normalizeAppError(
+  error: unknown,
+  fallbackMessage = "后端健康检查失败",
+): AppErrorPayload {
   if (typeof error === "object" && error !== null) {
     const payload = error as Partial<AppErrorPayload>;
     if (typeof payload.message === "string") {
@@ -32,7 +37,7 @@ function normalizeAppError(error: unknown): AppErrorPayload {
 
   return {
     category: "unknownBackendError",
-    message: "后端健康检查失败",
+    message: fallbackMessage,
     detail: error instanceof Error ? error.message : String(error),
   };
 }
@@ -46,5 +51,30 @@ export async function checkFfmpegHealth(): Promise<FfmpegHealth> {
     return await invoke<FfmpegHealth>("check_ffmpeg_health");
   } catch (error) {
     throw normalizeAppError(error);
+  }
+}
+
+export async function selectMediaFile(): Promise<string | null> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  return await open({
+    title: "选择媒体文件",
+    multiple: false,
+    directory: false,
+    filters: MEDIA_DIALOG_FILTERS,
+  });
+}
+
+export async function probeMedia(inputPath: string): Promise<MediaInfo> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  try {
+    return await invoke<MediaInfo>("probe_media", { inputPath });
+  } catch (error) {
+    throw normalizeAppError(error, "媒体探测失败");
   }
 }

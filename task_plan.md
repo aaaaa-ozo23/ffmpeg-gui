@@ -5,8 +5,8 @@
 
 ## 当前状态
 - 规划制定：complete
-- 实际开发：阶段 3 complete
-- 当前建议开始阶段：阶段 4：文件导入与媒体探测
+- 实际开发：阶段 4 complete
+- 当前建议开始阶段：阶段 5：任务系统、进度、取消与日志
 
 ## 范围边界
 
@@ -156,17 +156,18 @@
 - [x] 前端能调用一个健康检查命令显示 FFmpeg/FFprobe 版本。
 
 ## 阶段 4：文件导入与媒体探测
-**状态：pending**
+**状态：complete**
 
 ### 目标
 完成第一个端到端功能：用户选择媒体文件，后端调用 ffprobe，前端展示媒体信息。
 
 ### 主要任务
-- 前端接入文件选择对话框。
-- 后端实现 `probe_media` 命令。
-- 使用：
+- [x] 前端接入文件选择对话框。
+- [x] 文件选择支持常见视频、音频和图片格式。
+- [x] 后端实现 `probe_media` 命令。
+- [x] 使用：
   - `ffprobe -v error -print_format json -show_format -show_streams <input>`
-- 将 ffprobe JSON 映射为统一 `MediaInfo`：
+- [x] 将 ffprobe JSON 映射为统一 `MediaInfo`：
   - path
   - durationSec
   - sizeBytes
@@ -174,7 +175,8 @@
   - videoStreams
   - audioStreams
   - subtitleStreams
-- UI 展示：
+- [x] UI 展示：
+  - 媒体类型
   - 文件名
   - 时长
   - 容器格式
@@ -183,18 +185,22 @@
   - 音频编码
   - 字幕轨数量
   - 文件大小
-- 对损坏文件、未知格式、无权限路径给出明确错误。
+- [x] 对损坏文件、未知格式、无权限路径给出明确错误。
 
 ### 输出物
-- `probe` 前端功能模块。
+- `src/lib/tauri.ts` 文件选择与 typed invoke。
+- `src/lib/mediaFormats.ts` 常见视频、音频、图片格式白名单。
+- `src/lib/media.ts` 前端 `MediaInfo` 到 `MediaSummary` 映射。
+- `src/components/MediaSummaryPanel.tsx` 四态媒体信息展示。
 - `media.rs` 后端命令。
 - `ffmpeg/probe.rs` 探测解析逻辑。
 
 ### 验收标准
-- MP4 / MKV / MOV / MP3 / WAV 基础样例可探测。
-- 中文路径样例可探测。
-- 带空格路径样例可探测。
-- 损坏文件不会导致应用崩溃。
+- [x] MP4 / MKV / MOV / MP3 / WAV / FLAC 基础样例可探测。
+- [x] PNG / JPEG / WebP 图片样例可探测。
+- [x] 中文路径样例可探测。
+- [x] 带空格路径样例可探测。
+- [x] 损坏文件不会导致应用崩溃。
 
 ## 阶段 5：任务系统、进度、取消与日志
 **状态：pending**

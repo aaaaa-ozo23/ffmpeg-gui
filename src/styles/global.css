@@ -296,6 +296,14 @@ h3 {
   white-space: nowrap;
 }
 
+.secondary-action:disabled,
+.icon-button:disabled {
+  cursor: not-allowed;
+  color: var(--subtle);
+  border-color: transparent;
+  background: var(--surface-muted);
+}
+
 .status-metric-ready {
   color: var(--success);
   border-color: #b7dfc9;
@@ -377,6 +385,30 @@ h3 {
 .media-summary {
   margin-top: 14px;
   background: var(--surface-soft);
+}
+
+.media-summary-empty,
+.media-summary-loading,
+.media-summary-error {
+  min-height: 88px;
+}
+
+.media-summary-loading .media-icon {
+  color: var(--accent-strong);
+}
+
+.media-summary-loading .media-icon svg {
+  animation: spin 1s linear infinite;
+}
+
+.media-summary-error {
+  border-color: #f3bbb5;
+  background: #fff2f0;
+}
+
+.media-summary-error .media-icon {
+  color: var(--danger);
+  background: #fde8e5;
 }
 
 .feature-stack > .media-summary {

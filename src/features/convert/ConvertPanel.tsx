@@ -5,14 +5,17 @@ import {
   Play,
   Settings2,
 } from "lucide-react";
-import type { MediaSummary } from "../../app/types";
+import type { MediaProbeState } from "../../app/types";
 import { MediaSummaryPanel } from "../../components/MediaSummaryPanel";
 
 type ConvertPanelProps = {
-  media: MediaSummary;
+  mediaState: MediaProbeState;
+  onSelectMedia: () => void;
 };
 
-export function ConvertPanel({ media }: ConvertPanelProps) {
+export function ConvertPanel({ mediaState, onSelectMedia }: ConvertPanelProps) {
+  const isProbing = mediaState.status === "loading";
+
   return (
     <div className="feature-stack">
       <section className="tool-panel" aria-labelledby="convert-file-title">
@@ -21,13 +24,18 @@ export function ConvertPanel({ media }: ConvertPanelProps) {
             <p className="section-label">输入文件</p>
             <h2 id="convert-file-title">选择媒体</h2>
           </div>
-          <button className="secondary-action" type="button">
+          <button
+            className="secondary-action"
+            type="button"
+            disabled={isProbing}
+            onClick={onSelectMedia}
+          >
             <FolderOpen size={16} aria-hidden="true" />
-            选择文件
+            {isProbing ? "读取中" : "选择文件"}
           </button>
         </div>
 
-        <MediaSummaryPanel media={media} />
+        <MediaSummaryPanel mediaState={mediaState} />
       </section>
 
       <section className="tool-panel" aria-labelledby="convert-settings-title">
@@ -107,12 +115,16 @@ export function ConvertPanel({ media }: ConvertPanelProps) {
 
         <div className="parameter-summary">
           <span>参数摘要</span>
-          <p>输出 MP4 / H.264 / AAC / 重编码，等待阶段 3 的后端执行通道。</p>
+          <p>
+            {mediaState.status === "ready"
+              ? `已读取 ${mediaState.summary.fileName}，转换任务将在阶段 6 接入。`
+              : "选择媒体后先读取文件信息；转换任务将在阶段 6 接入。"}
+          </p>
         </div>
 
-        <button className="primary-action" type="button">
+        <button className="primary-action" type="button" disabled>
           <Play size={17} aria-hidden="true" />
-          创建转换任务
+          等待任务系统
         </button>
       </section>
     </div>

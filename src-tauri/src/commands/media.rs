@@ -1,8 +1,9 @@
 use crate::{
     errors::AppError,
     ffmpeg::{
-        command_builder::version_args,
+        command_builder::{probe_args, version_args},
         executor::{run_sidecar, SidecarTool},
+        probe::{parse_ffprobe_json, validate_media_path, MediaInfo},
         version::{parse_tool_version, FfmpegHealth, TARGET_TRIPLE},
     },
 };
@@ -20,6 +21,15 @@ pub async fn check_ffmpeg_health(app: tauri::AppHandle) -> Result<FfmpegHealth, 
         ffmpeg: parse_tool_version("FFmpeg", ffmpeg_text)?,
         ffprobe: parse_tool_version("FFprobe", ffprobe_text)?,
     })
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn probe_media(app: tauri::AppHandle, inputPath: String) -> Result<MediaInfo, AppError> {
+    validate_media_path(&inputPath)?;
+
+    let output = run_sidecar(&app, SidecarTool::Ffprobe, probe_args(&inputPath)).await?;
+    parse_ffprobe_json(&inputPath, &output.stdout)
 }
 
 fn first_non_empty<'a>(stdout: &'a str, stderr: &'a str) -> &'a str {

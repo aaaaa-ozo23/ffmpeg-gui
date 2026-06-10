@@ -38,6 +38,17 @@
 - Rust 端新增 `check_ffmpeg_health`，通过 `tauri_plugin_shell::ShellExt` 启动 sidecar 并返回 `{ targetTriple, ffmpeg, ffprobe }`。
 - Rust 错误模型统一返回 `{ category, message, detail }`，包含 sidecar 缺失、启动失败、非零退出码和输出解析失败分类。
 - 前端顶部状态区已接入健康检查；Tauri runtime 中显示 FFmpeg/FFprobe version line，普通 Vite 浏览器预览显示“需要 Tauri 桌面运行时”fallback。
+- 阶段 4 已实现第一个端到端闭环：前端通过 Tauri dialog 选择文件，Rust 后端通过项目内 `ffprobe` sidecar 读取 JSON，前端展示真实媒体信息。
+- `probe_media(inputPath: String)` 返回统一 `MediaInfo`：`path`、`durationSec`、`sizeBytes`、`formatName`、`videoStreams`、`audioStreams`、`subtitleStreams`。
+- `ffmpeg/probe.rs` 对 ffprobe JSON 字段保持宽容：duration、size、sample_rate 等数字字段按字符串解析，缺失或非法值映射为 `None`，不会 panic。
+- 路径输入在调用 sidecar 前先校验：空路径、文件不存在、目录输入、权限拒绝会返回结构化 `{ category, message, detail }` 错误。
+- 损坏媒体文件通过 ffprobe 非零退出分类为 `nonZeroExit`，前端显示错误提示且不破坏应用状态。
+- 前端 `MediaSummaryPanel` 现在覆盖未选择、探测中、探测失败、探测成功四态；不再默认把 mock 媒体当作已选择文件。
+- 阶段 4 本地临时素材验证覆盖普通英文路径、中文路径、带空格路径与损坏文件；生成位置在 `D:\tl-temp\ffmpeg-gui-stage4-media`，不纳入 Git。
+- 阶段 4 补充支持常见视频、音频和图片文件选择：视频包含 MP4/M4V/MOV/MKV/WebM/AVI/WMV/FLV/MPEG/TS/3GP/OGV/VOB，音频包含 MP3/WAV/FLAC/M4A/AAC/OGG/Opus/WMA/AIFF/APE/AMR/AC3/MKA，图片包含 JPG/JPEG/PNG/WebP/GIF/BMP/TIFF/AVIF/HEIC/HEIF。
+- 前端格式列表只影响文件对话框过滤和展示提示；后端不做扩展名白名单，仍由 ffprobe 结果决定是否可解析。
+- 静态图片在 ffprobe 中以 `video` stream 形式出现，前端按扩展名、图片 codec 或 `image2` format 推断为“图片”，时长统一显示“不适用”。
+- 阶段 4 补充临时素材验证位置为 `D:\tl-temp\ffmpeg-gui-stage4-formats`，已验证 MKV、MOV、WAV、FLAC、PNG、JPG、WebP 可被项目内 ffprobe 读取。
 
 ## 技术决策
 | 决策 | 理由 |
@@ -57,6 +68,11 @@
 | 阶段 3 sidecar 不提交 exe 到 Git | Gyan full build 单个 exe 超过 200 MB，直接提交会显著增大仓库且可能触发远程限制 |
 | 阶段 3 移除前端 `shell:default` capability | sidecar 只从 Rust 命令启动，前端不需要直接 shell 权限 |
 | 阶段 3 严格不做媒体探测 | 保持阶段边界，`ffprobe -show_streams` 留到阶段 4 |
+| 阶段 4 媒体导入复用现有顶部“打开文件”和转换页“选择文件”入口 | 符合首个薄切片范围，不新增单独导入导航 |
+| 阶段 4 只实现探测，不创建任务、不执行 FFmpeg 转换 | 保持阶段边界，阶段 5 才进入任务系统和进度/取消 |
+| 前端继续保留 mock 任务/日志面板 | 当前任务系统尚未实现，阶段 4 只替换媒体状态为真实数据 |
+| 普通 Vite 预览只显示 Tauri runtime fallback | 文件选择和后端 invoke 必须在 Tauri 桌面运行时中执行 |
+| 将支持格式集中到 `src/lib/mediaFormats.ts` | 避免 dialog 过滤、展示提示和后续测试素材清单分散漂移 |
 
 ## 遇到的问题
 | 问题 | 解决方案 |
@@ -67,6 +83,13 @@
 | `generate_handler![commands::check_ffmpeg_health]` 无法通过 re-export 找到 Tauri 命令宏符号 | 改为直接注册 `commands::media::check_ffmpeg_health` |
 | 缺失 sidecar 模拟测试首次包装方式误判外部命令退出码 | 改用 `$LASTEXITCODE` 和合并 stdout/stderr 后重新验证 |
 | 缺失 sidecar 模拟与正常检查并行操作同一个 ffprobe 文件导致检查互相干扰 | 改为顺序执行，先恢复再模拟缺失 |
+| 阶段 4 前端构建首次失败，TypeScript target 不支持 `String.prototype.replaceAll` | 改用正则 `path.replace(/\\/g, "/")` |
+| 阶段 4 前端构建再次失败，TypeScript target 不支持 `Array.prototype.at` | 改用数组索引读取最后一段路径 |
+| 生成临时媒体素材时 FFmpeg stderr 被 PowerShell 当作 NativeCommandError 显示 | 保留退出码判断，重新运行后确认测试素材生成成功 |
+| 停止 Vite 预览进程时变量名 `$pid` 与 PowerShell 只读 `$PID` 冲突 | 改用 `$childProcessId` 等非保留变量重新停止进程树 |
+| Browser 插件在阶段 4 Vite 页面检查时触发 URL policy 拒绝 | 不绕过策略；记录为 UI 浏览器验证阻断，使用构建和 Tauri dev 日志 smoke 作为本轮验证依据 |
+| 阶段 4 补充格式验证时，PowerShell 再次把 FFmpeg stderr 当作 NativeCommandError | 改为显式将 FFmpeg stderr 写入日志文件，并只按 `$LASTEXITCODE` 判断成败 |
+| `pnpm.cmd run tauri:build` 首次补充复验失败，旧的 release `ffmpeg-gui.exe` 正在运行并锁住目标文件 | 查到并停止 `src-tauri\target\release\ffmpeg-gui.exe` 进程及其 WebView 子进程后重试成功 |
 
 ## 规划结论
 - 开发计划已写入 task_plan.md。
@@ -75,6 +98,7 @@
 - 阶段 1 已完成。
 - 阶段 2 已完成，下一阶段应进入“FFmpeg sidecar 与 Rust 后端基础”。
 - 阶段 3 已完成，下一阶段应进入“文件导入与媒体探测”。
+- 阶段 4 已完成，第一个文件选择 -> ffprobe -> UI 展示闭环已落地；下一阶段应进入任务系统、进度、取消与日志。
 
 ## 资源
 - README.md

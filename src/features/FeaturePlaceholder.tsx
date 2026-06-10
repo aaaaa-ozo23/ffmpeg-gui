@@ -1,21 +1,21 @@
 import { CircleHelp, Clock, SlidersHorizontal } from "lucide-react";
-import type { FeatureConfig, MediaSummary } from "../app/types";
+import type { FeatureConfig, MediaProbeState } from "../app/types";
 import { MediaSummaryPanel } from "../components/MediaSummaryPanel";
 
 type FeaturePlaceholderProps = {
   feature: FeatureConfig;
-  media: MediaSummary;
+  mediaState: MediaProbeState;
 };
 
 export function FeaturePlaceholder({
   feature,
-  media,
+  mediaState,
 }: FeaturePlaceholderProps) {
   const Icon = feature.icon;
 
   return (
     <div className="feature-stack">
-      <MediaSummaryPanel media={media} />
+      <MediaSummaryPanel mediaState={mediaState} />
 
       <section className="tool-panel" aria-labelledby={`${feature.id}-title`}>
         <div className="panel-heading">

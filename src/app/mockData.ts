@@ -72,6 +72,7 @@ export const featureConfigs: FeatureConfig[] = [
 export const mockMedia: MediaSummary = {
   fileName: "sample demo 中文路径.mp4",
   path: "D:\\Media Tests\\中文路径\\sample demo 中文路径.mp4",
+  mediaKind: "视频",
   duration: "00:03:42",
   container: "MP4",
   resolution: "1920 x 1080",

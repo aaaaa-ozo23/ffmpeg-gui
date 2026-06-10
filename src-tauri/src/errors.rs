@@ -8,6 +8,9 @@ pub enum ErrorCategory {
     NonZeroExit,
     OutputParse,
     InvalidInput,
+    FileNotFound,
+    DirectoryInput,
+    PermissionDenied,
 }
 
 #[derive(Debug, Clone, Serialize, thiserror::Error)]
@@ -65,6 +68,33 @@ impl AppError {
             category: ErrorCategory::InvalidInput,
             message: message.into(),
             detail: None,
+        }
+    }
+
+    pub fn file_not_found(path: impl Into<String>) -> Self {
+        let path = path.into();
+        Self {
+            category: ErrorCategory::FileNotFound,
+            message: "媒体文件不存在或已被移动。".to_string(),
+            detail: Some(path),
+        }
+    }
+
+    pub fn directory_input(path: impl Into<String>) -> Self {
+        let path = path.into();
+        Self {
+            category: ErrorCategory::DirectoryInput,
+            message: "请选择具体媒体文件，不要选择文件夹。".to_string(),
+            detail: Some(path),
+        }
+    }
+
+    pub fn permission_denied(path: impl Into<String>, detail: impl Into<String>) -> Self {
+        let path = path.into();
+        Self {
+            category: ErrorCategory::PermissionDenied,
+            message: "无法读取媒体文件，请检查文件权限或是否被其它程序占用。".to_string(),
+            detail: Some(format!("path={path}; {}", detail.into())),
         }
     }
 

@@ -1,19 +1,23 @@
-import type { FeatureConfig, MediaSummary } from "../app/types";
+import type { FeatureConfig, MediaProbeState } from "../app/types";
 import { ConvertPanel } from "./convert/ConvertPanel";
 import { FeaturePlaceholder } from "./FeaturePlaceholder";
 
 type FeatureWorkspaceProps = {
   activeFeature: FeatureConfig;
-  media: MediaSummary;
+  mediaState: MediaProbeState;
+  onSelectMedia: () => void;
 };
 
 export function FeatureWorkspace({
   activeFeature,
-  media,
+  mediaState,
+  onSelectMedia,
 }: FeatureWorkspaceProps) {
   if (activeFeature.id === "convert") {
-    return <ConvertPanel media={media} />;
+    return (
+      <ConvertPanel mediaState={mediaState} onSelectMedia={onSelectMedia} />
+    );
   }
 
-  return <FeaturePlaceholder feature={activeFeature} media={media} />;
+  return <FeaturePlaceholder feature={activeFeature} mediaState={mediaState} />;
 }

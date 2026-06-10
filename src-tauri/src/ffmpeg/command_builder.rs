@@ -39,6 +39,14 @@ pub fn version_args() -> Vec<String> {
     CommandArgs::new().arg("-version").into_vec()
 }
 
+pub fn probe_args(input_path: impl AsRef<Path>) -> Vec<String> {
+    CommandArgs::new()
+        .args(["-v", "error", "-print_format", "json", "-show_format"])
+        .arg("-show_streams")
+        .arg(input_path.as_ref().to_string_lossy().into_owned())
+        .into_vec()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -66,5 +74,23 @@ mod tests {
     #[test]
     fn builds_version_args_without_shell_string() {
         assert_eq!(version_args(), vec!["-version"]);
+    }
+
+    #[test]
+    fn builds_probe_args_with_path_as_single_arg() {
+        let args = probe_args(r"D:\媒体 Tests\sample demo 中文.mp4");
+
+        assert_eq!(
+            args,
+            vec![
+                "-v",
+                "error",
+                "-print_format",
+                "json",
+                "-show_format",
+                "-show_streams",
+                r"D:\媒体 Tests\sample demo 中文.mp4"
+            ]
+        );
     }
 }

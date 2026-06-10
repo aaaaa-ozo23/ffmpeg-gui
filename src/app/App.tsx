@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -8,17 +8,18 @@ import {
   FolderOpen,
   LoaderCircle,
 } from "lucide-react";
-import { featureConfigs, mockLogs, mockMedia, mockTasks } from "./mockData";
+import { featureConfigs, mockLogs, mockTasks } from "./mockData";
 import type {
   AppErrorPayload,
   FeatureId,
   InspectorTab,
+  MediaProbeState,
   SidecarHealthState,
 } from "./types";
 import { AppSidebar } from "../components/AppSidebar";
 import { InspectorPanel } from "../components/InspectorPanel";
 import { FeatureWorkspace } from "../features/FeatureWorkspace";
-import { checkFfmpegHealth } from "../lib";
+import { checkFfmpegHealth, probeMedia, selectMediaFile, toMediaSummary } from "../lib";
 
 function App() {
   const [activeFeatureId, setActiveFeatureId] =
@@ -26,6 +27,9 @@ function App() {
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("tasks");
   const [sidecarHealth, setSidecarHealth] = useState<SidecarHealthState>({
     status: "loading",
+  });
+  const [mediaProbeState, setMediaProbeState] = useState<MediaProbeState>({
+    status: "empty",
   });
 
   const activeFeature = useMemo(
@@ -56,6 +60,32 @@ function App() {
     return () => {
       canceled = true;
     };
+  }, []);
+
+  const handleSelectMedia = useCallback(async () => {
+    let selectedPath: string | null = null;
+
+    try {
+      selectedPath = await selectMediaFile();
+      if (!selectedPath) {
+        return;
+      }
+
+      setMediaProbeState({ status: "loading", path: selectedPath });
+
+      const media = await probeMedia(selectedPath);
+      setMediaProbeState({
+        status: "ready",
+        media,
+        summary: toMediaSummary(media),
+      });
+    } catch (error) {
+      setMediaProbeState({
+        status: "error",
+        path: selectedPath ?? undefined,
+        error: error as AppErrorPayload,
+      });
+    }
   }, []);
 
   const sidecarStatusTitle = useMemo(() => {
@@ -93,7 +123,13 @@ function App() {
           </div>
 
           <div className="header-actions" aria-label="工作区状态">
-            <button className="icon-button" type="button" aria-label="打开文件">
+            <button
+              className="icon-button"
+              type="button"
+              aria-label="打开文件"
+              onClick={handleSelectMedia}
+              disabled={mediaProbeState.status === "loading"}
+            >
               <FolderOpen size={18} aria-hidden="true" />
             </button>
             <button className="icon-button" type="button" aria-label="任务清单">
@@ -144,7 +180,11 @@ function App() {
           )}
         </div>
 
-        <FeatureWorkspace activeFeature={activeFeature} media={mockMedia} />
+        <FeatureWorkspace
+          activeFeature={activeFeature}
+          mediaState={mediaProbeState}
+          onSelectMedia={handleSelectMedia}
+        />
       </section>
 
       <InspectorPanel

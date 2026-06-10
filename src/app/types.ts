@@ -25,6 +25,7 @@ export type FeatureConfig = {
 export type MediaSummary = {
   fileName: string;
   path: string;
+  mediaKind: string;
   duration: string;
   container: string;
   resolution: string;
@@ -33,6 +34,42 @@ export type MediaSummary = {
   subtitleTracks: number;
   size: string;
 };
+
+export type VideoStream = {
+  index: number;
+  codecName: string;
+  width?: number;
+  height?: number;
+};
+
+export type AudioStream = {
+  index: number;
+  codecName: string;
+  sampleRate?: number;
+  channels?: number;
+};
+
+export type SubtitleStream = {
+  index: number;
+  codecName: string;
+  language?: string;
+};
+
+export type MediaInfo = {
+  path: string;
+  durationSec?: number;
+  sizeBytes?: number;
+  formatName?: string;
+  videoStreams: VideoStream[];
+  audioStreams: AudioStream[];
+  subtitleStreams: SubtitleStream[];
+};
+
+export type MediaProbeState =
+  | { status: "empty" }
+  | { status: "loading"; path: string }
+  | { status: "ready"; media: MediaInfo; summary: MediaSummary }
+  | { status: "error"; path?: string; error: AppErrorPayload };
 
 export type TaskItem = {
   id: string;
