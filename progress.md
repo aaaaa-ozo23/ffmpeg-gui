@@ -75,5 +75,59 @@
 | 我学到了什么？ | 见 findings.md |
 | 我做了什么？ | 见上方记录 |
 
+## 会话：2026-06-10
+
+### 阶段 2：产品界面架构与前端基础
+- **状态：** complete
+- 执行的操作：
+  - 确认当前分支为 `codex/ui-shell`，工作区干净。
+  - 添加 `lucide-react` 依赖。
+  - 将 baseline 面板替换为完整应用 shell。
+  - 创建前端类型、mock 数据、左侧导航、中间功能工作区、右侧任务/日志面板。
+  - 为转换功能实现 mock 参数表单，为其它功能实现一致的占位参数面板。
+  - 使用 React 本地状态支持功能切换和任务/日志 tab 切换。
+  - 约束检查确认未新增真实 `invoke(...)`、FFmpeg/ffprobe 调用、sidecar 调用或 Tauri API 使用。
+  - in-app Browser 工具未暴露可调用接口，改用 Microsoft Edge headless 生成截图验证。
+  - 查看 1120x720 和 740x900 截图，修复桌面外层滚动条，改为中间工作区内部滚动。
+- 创建/修改的文件：
+  - `package.json`
+  - `pnpm-lock.yaml`
+  - `src/app/App.tsx`
+  - `src/app/types.ts`
+  - `src/app/mockData.ts`
+  - `src/components/*`
+  - `src/features/*`
+  - `src/styles/global.css`
+  - `task_plan.md`
+  - `findings.md`
+  - `progress.md`
+
+## 阶段 2 测试结果
+| 测试 | 输入 | 预期结果 | 实际结果 | 状态 |
+|------|------|---------|---------|------|
+| 依赖安装 | `pnpm.cmd install` | 依赖状态正常 | Already up to date | pass |
+| 前端构建 | `pnpm.cmd build` | TypeScript 与 Vite 构建通过 | 构建通过 | pass |
+| Rust 格式检查 | `cargo fmt --check` | 无格式变更需求 | 通过 | pass |
+| Tauri release 构建 | `pnpm.cmd tauri build` | Rust/Tauri 编译通过并生成包 | 构建通过，仍有 `.app` identifier 已知警告 | pass |
+| Tauri dev 冒烟 | `pnpm.cmd tauri dev` | Vite ready，桌面应用进程启动 | `target\\debug\\ffmpeg-gui.exe` 启动，随后停止进程 | pass |
+| 视觉验证 | Edge headless 1120x720 / 740x900 截图 | 桌面三栏、窄屏堆叠，无明显重叠 | 通过；桌面滚动限定在中间工作区内部 | pass |
+| 阶段边界检查 | `rg` 搜索 `invoke`、`ffmpeg`、`ffprobe`、Tauri API | 不应新增真实后端/sidecar 调用 | 未发现匹配 | pass |
+
+## 阶段 2 错误日志
+| 时间戳 | 错误 | 尝试次数 | 解决方案 |
+|--------|------|---------|---------|
+| 2026-06-10 | Browser 插件工具搜索未暴露可调用浏览器控制接口 | 1 | 使用 Microsoft Edge headless 截图作为浏览器验证回退 |
+| 2026-06-10 | 首次截图访问 `127.0.0.1:1420` 得到连接拒绝页 | 1 | 改用 Vite 日志中的 `localhost:1420` 重新截图成功 |
+| 2026-06-10 | 桌面截图出现外层页面滚动条 | 1 | 将桌面根布局固定为 `height: 100vh`，让中间工作区内部滚动 |
+
+## 阶段 2 五问重启检查
+| 问题 | 答案 |
+|------|------|
+| 我在哪里？ | 阶段 2：产品界面架构与前端基础已完成 |
+| 我要去哪里？ | 若继续开发，应从 task_plan.md 的阶段 3：FFmpeg sidecar 与 Rust 后端基础开始 |
+| 目标是什么？ | 完成浅色工具型前端 UI shell、mock 状态和组件基础 |
+| 我学到了什么？ | 见 findings.md |
+| 我做了什么？ | 见上方阶段 2 记录 |
+
 ---
 *每个阶段完成后或遇到错误时更新此文件*

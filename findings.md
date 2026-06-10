@@ -25,6 +25,11 @@
 - pnpm 11.1.2 首次安装时拦截了 `esbuild` 构建脚本，已通过 `pnpm-workspace.yaml` 只允许 `esbuild: true` 解决。
 - Tauri 构建通过，生成 `src-tauri/target/release/ffmpeg-gui.exe`、MSI 和 NSIS 安装包。
 - Tauri 构建提示 `com.ffmpeggui.app` 以 `.app` 结尾不推荐用于 macOS；这是当前用户确认的阶段 1 标识符，Windows 首发不阻塞。
+- 阶段 2 已在 `codex/ui-shell` 分支完成前端 UI shell：左侧功能导航、中间功能参数区、右侧任务/日志面板。
+- 阶段 2 采用浅色、克制、工具型桌面应用方向；保持 true white surfaces、浅灰背景、冷灰边框和单一蓝色系 accent。
+- 阶段 2 严格只做 UI 壳和 mock 状态，未接入真实 Tauri dialog、FFmpeg、ffprobe、sidecar 或后端命令。
+- 视觉验证时 in-app Browser 工具未暴露可调用接口；已用 Microsoft Edge headless 截图作为回退验证。
+- 1120x720 桌面截图验证三栏布局可用，外层页面不滚动，中间工作区内部滚动；740x900 窄屏截图验证内容纵向堆叠且无明显重叠。
 
 ## 技术决策
 | 决策 | 理由 |
@@ -38,25 +43,32 @@
 | 在转换等耗时功能前先做任务系统 | 进度、取消和日志是多个功能共享能力，应避免在每个功能中重复实现 |
 | 阶段 1 使用 `pnpm.cmd` / `npm.cmd` | 当前 PowerShell 执行策略会阻止 `.ps1` 入口 |
 | 在 `pnpm-workspace.yaml` 中仅允许 `esbuild` 构建脚本 | Vite 需要 esbuild postinstall；只批准必要依赖比批准全部更可控 |
+| 阶段 2 只使用 React 本地状态和 mock 数据 | 符合阶段范围，避免提前进入媒体探测或任务执行 |
+| 阶段 2 使用 `lucide-react` 图标 | 能保持工具按钮和导航图标一致，并符合 UI 控件识别习惯 |
+| 阶段 2 不展示命令预览 | 避免前端拼接 FFmpeg 命令字符串，后续由 Rust 后端负责参数构造 |
 
 ## 遇到的问题
 | 问题 | 解决方案 |
 |------|---------|
 | `pnpm.cmd install` 首次返回 `ERR_PNPM_IGNORED_BUILDS`，提示 esbuild 构建脚本被忽略 | 在 `pnpm-workspace.yaml` 中设置 `allowBuilds.esbuild: true` 后重新安装成功 |
 | `pnpm.cmd tauri build` 警告 bundle identifier 以 `.app` 结尾 | 记录为当前已知警告；该值来自阶段 1 确认方案，Windows 构建不阻塞 |
+| Browser 插件工具搜索未暴露可调用浏览器控制接口 | 使用 Microsoft Edge headless 生成桌面和窄屏截图作为视觉验证回退 |
 
 ## 规划结论
 - 开发计划已写入 task_plan.md。
 - 计划分为 10 个实际开发阶段：工程脚手架、前端基础、sidecar/后端基础、媒体探测、任务系统、格式转换、三个基础处理功能、字幕与倍速、批量/设置/预设、测试打包文档。
 - M2 可作为 MVP 可用节点，M4 可作为 Windows 首版交付节点。
-- 阶段 1 已完成，下一阶段应进入“产品界面架构与前端基础”。
+- 阶段 1 已完成。
+- 阶段 2 已完成，下一阶段应进入“FFmpeg sidecar 与 Rust 后端基础”。
 
 ## 资源
 - README.md
 - DEVELOPMENT.md
 
 ## 视觉/浏览器发现
-- 本次尚未进行浏览器或视觉验证。
+- 阶段 2 已用 Edge headless 截图验证 1120x720 与 740x900 两个视口。
+- 桌面布局为左侧导航、中间转换参数区、右侧任务/日志面板。
+- 窄屏布局中右侧面板下移，整体纵向滚动，无明显文本重叠或控件溢出。
 
 ---
 *每执行2次查看/浏览器/搜索操作后更新此文件*

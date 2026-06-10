@@ -1,1 +1,1 @@
-export {};
+export { FeatureWorkspace } from "./FeatureWorkspace";
