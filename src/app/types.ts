@@ -10,7 +10,15 @@ export type FeatureId =
   | "jobs"
   | "settings";
 
-export type JobStatus = "queued" | "running" | "done" | "failed" | "paused";
+export type JobStatus =
+  | "queued"
+  | "running"
+  | "success"
+  | "failed"
+  | "canceling"
+  | "canceled";
+
+export type JobKind = "nullOutput";
 
 export type InspectorTab = "tasks" | "logs";
 
@@ -71,22 +79,45 @@ export type MediaProbeState =
   | { status: "ready"; media: MediaInfo; summary: MediaSummary }
   | { status: "error"; path?: string; error: AppErrorPayload };
 
-export type TaskItem = {
+export type JobRecord = {
   id: string;
+  kind: JobKind;
   title: string;
-  feature: FeatureId;
   status: JobStatus;
-  progress: number;
-  inputName: string;
-  outputName: string;
-  updatedAt: string;
+  progressPct?: number;
+  durationSec?: number;
+  inputPath: string;
+  outputPath?: string;
+  createdAt: number;
+  startedAt?: number;
+  finishedAt?: number;
+  args: string[];
+  stdout: string[];
+  stderr: string[];
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
+  exitCode?: number;
+  errorCategory?: string;
+  errorMessage?: string;
 };
 
-export type LogEntry = {
-  id: string;
-  level: "info" | "warn" | "error";
-  time: string;
-  message: string;
+export type JobQueueConfig = {
+  maxConcurrent: number;
+};
+
+export type JobLogStream = "stdout" | "stderr";
+
+export type JobLogEntry = {
+  stream: JobLogStream;
+  line: string;
+  timestamp: number;
+  truncated: boolean;
+};
+
+export type JobsEvent = {
+  type: string;
+  job: JobRecord;
+  log?: JobLogEntry;
 };
 
 export type ToolVersion = {
@@ -106,6 +137,11 @@ export type AppErrorPayload = {
   message: string;
   detail?: string;
 };
+
+export type JobsRuntimeState =
+  | { status: "loading" }
+  | { status: "ready" }
+  | { status: "error"; error: AppErrorPayload };
 
 export type SidecarHealthState =
   | { status: "loading" }

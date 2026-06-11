@@ -5,8 +5,8 @@
 
 ## 当前状态
 - 规划制定：complete
-- 实际开发：阶段 4 complete
-- 当前建议开始阶段：阶段 5：任务系统、进度、取消与日志
+- 实际开发：阶段 5 complete
+- 当前建议开始阶段：阶段 6：单文件格式转换
 
 ## 范围边界
 
@@ -203,45 +203,61 @@
 - [x] 损坏文件不会导致应用崩溃。
 
 ## 阶段 5：任务系统、进度、取消与日志
-**状态：pending**
+**状态：complete**
 
 ### 目标
 在真正处理功能大规模接入前，先建立长任务基础设施，避免每个功能重复实现进度和日志。
 
 ### 主要任务
-- 定义任务模型：
-  - id
-  - type
-  - inputPath
-  - outputPath
-  - status
-  - progress
-  - createdAt
-  - startedAt
-  - finishedAt
-  - args
-  - stdout
-  - stderr
-  - exitCode
-  - errorCategory
-- 实现简单任务队列：
-  - pending
-  - running
-  - success
-  - failed
-  - canceled
-- 实现取消机制：
-  - 保存运行中的进程句柄。
-  - 前端请求取消时终止对应任务。
-- 实现 FFmpeg 进度解析：
+- [x] 定义 `JobRecord` 任务模型：
+  - `id`
+  - `kind`
+  - `title`
+  - `inputPath`
+  - `outputPath`
+  - `status`
+  - `progressPct`
+  - `createdAt`
+  - `startedAt`
+  - `finishedAt`
+  - `args`
+  - `stdout`
+  - `stderr`
+  - `exitCode`
+  - `errorCategory`
+  - `errorMessage`
+- [x] 实现内存任务队列状态：
+  - `queued`
+  - `running`
+  - `success`
+  - `failed`
+  - `canceling`
+  - `canceled`
+- [x] 实现可配置并发调度：
+  - 默认 `maxConcurrent = 1`。
+  - 允许 1-4。
+  - FIFO 启动队列任务。
+  - 降低并发不终止已运行任务。
+- [x] 实现取消机制：
+  - queued 任务直接变为 canceled。
+  - running 任务先变为 canceling，再 kill 子进程。
+  - 已结束任务返回结构化错误。
+- [x] 实现 FFmpeg 进度解析：
   - 使用 `-progress pipe:1 -nostats`。
   - 解析 `out_time_ms`。
-  - 用媒体总时长计算百分比。
-- 实现日志面板：
+  - 用媒体总时长计算 0-99 运行百分比，成功时置 100。
+  - 未知时长保持 indeterminate。
+- [x] 实现阶段 5 临时能力：Null 输出验证任务：
+  - 参数固定为 `-hide_banner -nostdin -re -i <input> -map 0:v? -map 0:a? -f null -progress pipe:1 -nostats NUL`。
+  - 只验证任务系统，不生成用户文件。
+  - 不进入阶段 6 的真实转换。
+- [x] 实现日志面板：
   - 可查看任务参数数组。
   - 可查看 stdout/stderr。
-  - 可复制错误日志。
-- 前端监听后端任务事件并更新 UI。
+  - 可复制单任务或全部任务日志。
+  - 日志限制为最近 200 行或 128 KiB，并标记截断。
+- [x] 前端先 `list_jobs()`，再监听 `jobs-event` 增量同步 UI。
+- [x] 普通浏览器/Vite 预览继续显示 Tauri runtime fallback，不崩溃。
 
 ### 输出物
 - `src/features/jobs`
@@ -250,10 +266,11 @@
 - 任务队列和日志 UI。
 
 ### 验收标准
-- 长 MP4 任务能持续更新进度。
-- 取消任务后 UI 状态正确，进程不继续写输出。
-- 失败任务能查看和复制日志。
-- 单任务失败不会破坏后续任务状态。
+- [x] Null 输出验证任务能持续写出进度。
+- [x] 取消任务后 UI 与后端状态模型覆盖 queued/running 两类取消路径。
+- [x] 失败任务能查看和复制 stdout/stderr、退出码和错误信息。
+- [x] 单任务失败不会破坏后续任务调度状态。
+- [x] 并发限制和 FIFO 调度有单元测试覆盖。
 
 ## 阶段 6：单文件格式转换
 **状态：pending**

@@ -11,6 +11,10 @@ pub enum ErrorCategory {
     FileNotFound,
     DirectoryInput,
     PermissionDenied,
+    JobNotFound,
+    InvalidJobConfig,
+    JobAlreadyFinished,
+    CancelFailed,
 }
 
 #[derive(Debug, Clone, Serialize, thiserror::Error)]
@@ -95,6 +99,38 @@ impl AppError {
             category: ErrorCategory::PermissionDenied,
             message: "无法读取媒体文件，请检查文件权限或是否被其它程序占用。".to_string(),
             detail: Some(format!("path={path}; {}", detail.into())),
+        }
+    }
+
+    pub fn job_not_found(job_id: impl Into<String>) -> Self {
+        Self {
+            category: ErrorCategory::JobNotFound,
+            message: "任务不存在或已被清除。".to_string(),
+            detail: Some(job_id.into()),
+        }
+    }
+
+    pub fn invalid_job_config(message: impl Into<String>) -> Self {
+        Self {
+            category: ErrorCategory::InvalidJobConfig,
+            message: message.into(),
+            detail: None,
+        }
+    }
+
+    pub fn job_already_finished(job_id: impl Into<String>) -> Self {
+        Self {
+            category: ErrorCategory::JobAlreadyFinished,
+            message: "任务已经结束，不能再次取消。".to_string(),
+            detail: Some(job_id.into()),
+        }
+    }
+
+    pub fn cancel_failed(job_id: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self {
+            category: ErrorCategory::CancelFailed,
+            message: "取消任务失败。".to_string(),
+            detail: Some(format!("jobId={}; {}", job_id.into(), detail.into())),
         }
     }
 

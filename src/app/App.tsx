@@ -8,18 +8,33 @@ import {
   FolderOpen,
   LoaderCircle,
 } from "lucide-react";
-import { featureConfigs, mockLogs, mockTasks } from "./mockData";
+import { featureConfigs } from "./mockData";
 import type {
   AppErrorPayload,
   FeatureId,
   InspectorTab,
+  JobQueueConfig,
+  JobRecord,
+  JobsRuntimeState,
   MediaProbeState,
   SidecarHealthState,
 } from "./types";
 import { AppSidebar } from "../components/AppSidebar";
 import { InspectorPanel } from "../components/InspectorPanel";
 import { FeatureWorkspace } from "../features/FeatureWorkspace";
-import { checkFfmpegHealth, probeMedia, selectMediaFile, toMediaSummary } from "../lib";
+import {
+  cancelJob,
+  checkFfmpegHealth,
+  clearFinishedJobs,
+  enqueueNullJob,
+  getJobQueueConfig,
+  listenToJobEvents,
+  listJobs,
+  probeMedia,
+  selectMediaFile,
+  setJobQueueConfig,
+  toMediaSummary,
+} from "../lib";
 
 function App() {
   const [activeFeatureId, setActiveFeatureId] =
@@ -31,6 +46,15 @@ function App() {
   const [mediaProbeState, setMediaProbeState] = useState<MediaProbeState>({
     status: "empty",
   });
+  const [jobs, setJobs] = useState<JobRecord[]>([]);
+  const [jobQueueConfig, setJobQueueConfigState] = useState<JobQueueConfig>({
+    maxConcurrent: 1,
+  });
+  const [jobsRuntime, setJobsRuntime] = useState<JobsRuntimeState>({
+    status: "loading",
+  });
+  const [jobCommandError, setJobCommandError] =
+    useState<AppErrorPayload | undefined>();
 
   const activeFeature = useMemo(
     () =>
@@ -62,6 +86,46 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    async function connectJobs() {
+      try {
+        const [initialJobs, initialConfig] = await Promise.all([
+          listJobs(),
+          getJobQueueConfig(),
+        ]);
+        if (disposed) {
+          return;
+        }
+
+        setJobs(sortJobs(initialJobs));
+        setJobQueueConfigState(initialConfig);
+        setJobsRuntime({ status: "ready" });
+
+        unlisten = await listenToJobEvents((event) => {
+          setJobs((currentJobs) => upsertJob(currentJobs, event.job));
+          setJobCommandError(undefined);
+        });
+      } catch (error) {
+        if (!disposed) {
+          setJobsRuntime({
+            status: "error",
+            error: error as AppErrorPayload,
+          });
+        }
+      }
+    }
+
+    void connectJobs();
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
   const handleSelectMedia = useCallback(async () => {
     let selectedPath: string | null = null;
 
@@ -87,6 +151,63 @@ function App() {
       });
     }
   }, []);
+
+  const handleEnqueueNullJob = useCallback(async () => {
+    if (mediaProbeState.status !== "ready") {
+      return;
+    }
+
+    try {
+      const job = await enqueueNullJob(
+        mediaProbeState.media.path,
+        mediaProbeState.media.durationSec,
+      );
+      setJobs((currentJobs) => upsertJob(currentJobs, job));
+      setJobCommandError(undefined);
+      setInspectorTab("tasks");
+      setActiveFeatureId("jobs");
+    } catch (error) {
+      setJobCommandError(error as AppErrorPayload);
+    }
+  }, [mediaProbeState]);
+
+  const handleCancelJob = useCallback(async (jobId: string) => {
+    try {
+      const job = await cancelJob(jobId);
+      setJobs((currentJobs) => upsertJob(currentJobs, job));
+      setJobCommandError(undefined);
+    } catch (error) {
+      setJobCommandError(error as AppErrorPayload);
+    }
+  }, []);
+
+  const handleClearFinishedJobs = useCallback(async () => {
+    try {
+      const remainingJobs = await clearFinishedJobs();
+      setJobs(sortJobs(remainingJobs));
+      setJobCommandError(undefined);
+    } catch (error) {
+      setJobCommandError(error as AppErrorPayload);
+    }
+  }, []);
+
+  const handleMaxConcurrentChange = useCallback(async (value: number) => {
+    try {
+      const config = await setJobQueueConfig(value);
+      setJobQueueConfigState(config);
+      setJobCommandError(undefined);
+    } catch (error) {
+      setJobCommandError(error as AppErrorPayload);
+    }
+  }, []);
+
+  const handleCopyJobLog = useCallback((job: JobRecord) => {
+    void navigator.clipboard?.writeText(formatJobLog(job));
+  }, []);
+
+  const handleCopyAllJobLogs = useCallback(() => {
+    void navigator.clipboard?.writeText(jobs.map(formatJobLog).join("\n\n"));
+  }, [jobs]);
 
   const sidecarStatusTitle = useMemo(() => {
     if (sidecarHealth.status === "ready") {
@@ -132,7 +253,12 @@ function App() {
             >
               <FolderOpen size={18} aria-hidden="true" />
             </button>
-            <button className="icon-button" type="button" aria-label="任务清单">
+            <button
+              className="icon-button"
+              type="button"
+              aria-label="任务清单"
+              onClick={() => setActiveFeatureId("jobs")}
+            >
               <ClipboardList size={18} aria-hidden="true" />
             </button>
           </div>
@@ -183,18 +309,72 @@ function App() {
         <FeatureWorkspace
           activeFeature={activeFeature}
           mediaState={mediaProbeState}
+          jobs={jobs}
+          jobQueueConfig={jobQueueConfig}
+          jobsRuntime={jobsRuntime}
+          jobCommandError={jobCommandError}
           onSelectMedia={handleSelectMedia}
+          onEnqueueNullJob={handleEnqueueNullJob}
+          onCancelJob={handleCancelJob}
+          onClearFinishedJobs={handleClearFinishedJobs}
+          onMaxConcurrentChange={handleMaxConcurrentChange}
+          onCopyJobLog={handleCopyJobLog}
+          onCopyAllJobLogs={handleCopyAllJobLogs}
         />
       </section>
 
       <InspectorPanel
         activeTab={inspectorTab}
-        logs={mockLogs}
-        tasks={mockTasks}
+        jobs={jobs}
+        queueConfig={jobQueueConfig}
+        runtime={jobsRuntime}
+        commandError={jobCommandError}
         onTabChange={setInspectorTab}
+        onCancelJob={handleCancelJob}
+        onClearFinished={handleClearFinishedJobs}
+        onMaxConcurrentChange={handleMaxConcurrentChange}
+        onCopyJobLog={handleCopyJobLog}
+        onCopyAllLogs={handleCopyAllJobLogs}
       />
     </main>
   );
 }
 
 export default App;
+
+function upsertJob(jobs: JobRecord[], job: JobRecord) {
+  const existingIndex = jobs.findIndex((currentJob) => currentJob.id === job.id);
+  if (existingIndex === -1) {
+    return sortJobs([...jobs, job]);
+  }
+
+  const nextJobs = [...jobs];
+  nextJobs[existingIndex] = job;
+  return sortJobs(nextJobs);
+}
+
+function sortJobs(jobs: JobRecord[]) {
+  return [...jobs].sort((left, right) => left.createdAt - right.createdAt);
+}
+
+function formatJobLog(job: JobRecord) {
+  return [
+    `jobId=${job.id}`,
+    `title=${job.title}`,
+    `status=${job.status}`,
+    `inputPath=${job.inputPath}`,
+    `outputPath=${job.outputPath ?? ""}`,
+    `exitCode=${job.exitCode ?? ""}`,
+    `errorCategory=${job.errorCategory ?? ""}`,
+    `errorMessage=${job.errorMessage ?? ""}`,
+    `args=${job.args.join(" ")}`,
+    "stdout:",
+    ...job.stdout,
+    job.stdoutTruncated ? "[stdout truncated]" : "",
+    "stderr:",
+    ...job.stderr,
+    job.stderrTruncated ? "[stderr truncated]" : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}

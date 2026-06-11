@@ -49,6 +49,18 @@
 - 前端格式列表只影响文件对话框过滤和展示提示；后端不做扩展名白名单，仍由 ffprobe 结果决定是否可解析。
 - 静态图片在 ffprobe 中以 `video` stream 形式出现，前端按扩展名、图片 codec 或 `image2` format 推断为“图片”，时长统一显示“不适用”。
 - 阶段 4 补充临时素材验证位置为 `D:\tl-temp\ffmpeg-gui-stage4-formats`，已验证 MKV、MOV、WAV、FLAC、PNG、JPG、WebP 可被项目内 ffprobe 读取。
+- 阶段 5 已在 `codex/job-system` 分支实现内存态 `JobManager`，作为 Tauri managed state 管理任务队列、运行中子进程、日志和并发配置。
+- 阶段 5 公共命令包括 `list_jobs`、`get_job`、`enqueue_null_job`、`cancel_job`、`clear_finished_jobs`、`get_job_queue_config`、`set_job_queue_config`。
+- 阶段 5 事件名为 `jobs-event`，前端启动时先拉取 `list_jobs()`，再通过事件监听增量同步任务状态和日志。
+- 队列并发默认 `maxConcurrent = 1`，允许范围为 1-4；降低并发不会杀死已运行任务，只限制后续 FIFO 启动。
+- 阶段 5 仅新增 Null 输出验证任务，FFmpeg 参数为安全数组：`-hide_banner -nostdin -re -i <input> -map 0:v? -map 0:a? -f null -progress pipe:1 -nostats NUL`。
+- Null 输出验证任务只用于验证进度、取消、日志和事件链路，不生成用户文件，不代表阶段 6 的真实转换能力。
+- 任务状态统一为 `queued`、`running`、`success`、`failed`、`canceling`、`canceled`。
+- 日志分别保存 stdout 与 stderr，限制为最近 200 行或 128 KiB，超过限制时保留截断标记并支持复制日志。
+- FFmpeg 进度解析复用 `-progress pipe:1` stdout，按 `out_time_ms` 和媒体总时长计算 0-99 运行进度；成功完成后置为 100，未知时长保持不定进度。
+- 前端已移除右侧任务/日志 mock 数据，转换页主按钮改为“验证任务系统（Null 输出）”，并明确该操作不是转换导出。
+- 阶段 5 真实验证生成的临时 MP4 位于 `D:\tl-temp\ffmpeg-gui-stage5-jobs`，包含中文和空格路径，不纳入 Git。
+- 阶段 5 普通浏览器/Vite fallback 已用 Edge headless 验证，渲染 DOM 包含“需要 Tauri 桌面运行时”文案。
 
 ## 技术决策
 | 决策 | 理由 |
@@ -73,6 +85,12 @@
 | 前端继续保留 mock 任务/日志面板 | 当前任务系统尚未实现，阶段 4 只替换媒体状态为真实数据 |
 | 普通 Vite 预览只显示 Tauri runtime fallback | 文件选择和后端 invoke 必须在 Tauri 桌面运行时中执行 |
 | 将支持格式集中到 `src/lib/mediaFormats.ts` | 避免 dialog 过滤、展示提示和后续测试素材清单分散漂移 |
+| 阶段 5 使用内存态 JobManager | 阶段目标是建立长任务基础设施，持久化历史留到后续设置/历史阶段 |
+| 任务事件统一为 `jobs-event` | 前端可用一个监听入口同步状态、进度和日志，避免每个功能各自建立事件模型 |
+| 阶段 5 使用 Null 输出验证任务 | 能验证 FFmpeg 长任务、进度、取消和日志，不提前实现真实格式转换 |
+| 并发配置只允许 1-4 | Windows 首发场景下避免一次启动过多 FFmpeg 进程，同时满足基本并行验证 |
+| 降低并发不终止已运行任务 | 避免配置变化造成隐式取消；新配置只影响后续调度 |
+| 日志采用 200 行或 128 KiB 双限制 | 保留足够排错信息，同时避免长任务日志无限增长 |
 
 ## 遇到的问题
 | 问题 | 解决方案 |
@@ -90,6 +108,11 @@
 | Browser 插件在阶段 4 Vite 页面检查时触发 URL policy 拒绝 | 不绕过策略；记录为 UI 浏览器验证阻断，使用构建和 Tauri dev 日志 smoke 作为本轮验证依据 |
 | 阶段 4 补充格式验证时，PowerShell 再次把 FFmpeg stderr 当作 NativeCommandError | 改为显式将 FFmpeg stderr 写入日志文件，并只按 `$LASTEXITCODE` 判断成败 |
 | `pnpm.cmd run tauri:build` 首次补充复验失败，旧的 release `ffmpeg-gui.exe` 正在运行并锁住目标文件 | 查到并停止 `src-tauri\target\release\ffmpeg-gui.exe` 进程及其 WebView 子进程后重试成功 |
+| `CommandEvent` receiver 处理时按 Result 匹配导致编译失败 | 按 Tauri shell 实际事件流改为处理 `Option<CommandEvent>`，分别匹配 stdout、stderr、error 和 terminated |
+| `dispatch` 中同时借用任务记录和运行中进程集合导致 Rust borrow checker 报错 | 先收集可启动任务的快照并标记 running，再释放锁后 spawn，最后回写 child 句柄 |
+| `cargo test` 首次发现新增 Rust 文件格式不符合 rustfmt | 运行 `cargo fmt` 后复验 `cargo fmt --check` 通过 |
+| 生成阶段 5 临时 MP4 时 PowerShell 再次将 FFmpeg stderr 包装为 NativeCommandError | 将命令包装为显式退出码判断，并用直接 Null 输出 smoke 验证进度行和退出码 |
+| 首次 Vite fallback 检查把 `pnpm.cmd dev -- --host ...` 传成了 Vite 位置参数并导致等待端口超时 | 改用 `pnpm.cmd exec vite --host 127.0.0.1 --port 1421 --strictPort`，再用 Edge headless 验证 DOM |
 
 ## 规划结论
 - 开发计划已写入 task_plan.md。
@@ -99,6 +122,7 @@
 - 阶段 2 已完成，下一阶段应进入“FFmpeg sidecar 与 Rust 后端基础”。
 - 阶段 3 已完成，下一阶段应进入“文件导入与媒体探测”。
 - 阶段 4 已完成，第一个文件选择 -> ffprobe -> UI 展示闭环已落地；下一阶段应进入任务系统、进度、取消与日志。
+- 阶段 5 已完成，任务系统、进度、取消、日志、事件同步和 Null 输出验证任务已落地；下一阶段应进入单文件格式转换。
 
 ## 资源
 - README.md

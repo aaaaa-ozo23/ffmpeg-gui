@@ -8,7 +8,7 @@ import {
   Settings,
   Shuffle,
 } from "lucide-react";
-import type { FeatureConfig, LogEntry, MediaSummary, TaskItem } from "./types";
+import type { FeatureConfig, MediaSummary } from "./types";
 
 export const featureConfigs: FeatureConfig[] = [
   {
@@ -81,57 +81,3 @@ export const mockMedia: MediaSummary = {
   subtitleTracks: 1,
   size: "128.4 MB",
 };
-
-export const mockTasks: TaskItem[] = [
-  {
-    id: "task-001",
-    title: "转换为 MP4",
-    feature: "convert",
-    status: "running",
-    progress: 64,
-    inputName: "sample demo 中文路径.mp4",
-    outputName: "sample demo 输出.mp4",
-    updatedAt: "刚刚",
-  },
-  {
-    id: "task-002",
-    title: "导出截图",
-    feature: "screenshot",
-    status: "queued",
-    progress: 0,
-    inputName: "presentation.mov",
-    outputName: "frame_00_45.png",
-    updatedAt: "等待中",
-  },
-  {
-    id: "task-003",
-    title: "提取音频",
-    feature: "audio",
-    status: "done",
-    progress: 100,
-    inputName: "interview.mkv",
-    outputName: "interview.wav",
-    updatedAt: "2 分钟前",
-  },
-];
-
-export const mockLogs: LogEntry[] = [
-  {
-    id: "log-001",
-    level: "info",
-    time: "00:12:04",
-    message: "任务队列 UI 已进入 mock 模式，等待阶段 5 接入真实进度事件。",
-  },
-  {
-    id: "log-002",
-    level: "warn",
-    time: "00:12:08",
-    message: "文件选择按钮仅用于界面占位，阶段 4 才会调用 Tauri dialog。",
-  },
-  {
-    id: "log-003",
-    level: "info",
-    time: "00:12:11",
-    message: "参数摘要只展示结构化配置，不生成命令行字符串。",
-  },
-];

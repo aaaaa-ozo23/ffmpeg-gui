@@ -5,16 +5,25 @@ import {
   Play,
   Settings2,
 } from "lucide-react";
-import type { MediaProbeState } from "../../app/types";
+import type { JobsRuntimeState, MediaProbeState } from "../../app/types";
 import { MediaSummaryPanel } from "../../components/MediaSummaryPanel";
 
 type ConvertPanelProps = {
   mediaState: MediaProbeState;
+  jobsRuntime: JobsRuntimeState;
   onSelectMedia: () => void;
+  onEnqueueNullJob: () => void;
 };
 
-export function ConvertPanel({ mediaState, onSelectMedia }: ConvertPanelProps) {
+export function ConvertPanel({
+  mediaState,
+  jobsRuntime,
+  onSelectMedia,
+  onEnqueueNullJob,
+}: ConvertPanelProps) {
   const isProbing = mediaState.status === "loading";
+  const canVerifyJob =
+    mediaState.status === "ready" && jobsRuntime.status === "ready";
 
   return (
     <div className="feature-stack">
@@ -117,14 +126,21 @@ export function ConvertPanel({ mediaState, onSelectMedia }: ConvertPanelProps) {
           <span>参数摘要</span>
           <p>
             {mediaState.status === "ready"
-              ? `已读取 ${mediaState.summary.fileName}，转换任务将在阶段 6 接入。`
-              : "选择媒体后先读取文件信息；转换任务将在阶段 6 接入。"}
+              ? `已读取 ${mediaState.summary.fileName}；当前按钮只创建 Null 输出验证任务，不生成文件。`
+              : "选择媒体后先读取文件信息；阶段 5 只验证任务系统，不做转换导出。"}
           </p>
         </div>
 
-        <button className="primary-action" type="button" disabled>
+        <button
+          className="primary-action"
+          type="button"
+          disabled={!canVerifyJob}
+          onClick={onEnqueueNullJob}
+        >
           <Play size={17} aria-hidden="true" />
-          等待任务系统
+          {jobsRuntime.status === "error"
+            ? "需要 Tauri 任务系统"
+            : "验证任务系统（Null 输出）"}
         </button>
       </section>
     </div>

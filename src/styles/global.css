@@ -296,6 +296,12 @@ h3 {
   white-space: nowrap;
 }
 
+.compact-action {
+  min-height: 30px;
+  padding: 0 9px;
+  font-size: 0.78rem;
+}
+
 .secondary-action:disabled,
 .icon-button:disabled {
   cursor: not-allowed;
@@ -504,6 +510,16 @@ h3 {
   gap: 6px;
 }
 
+.compact-field {
+  min-width: 74px;
+  gap: 4px;
+}
+
+.inline-field {
+  grid-template-columns: auto 64px;
+  align-items: center;
+}
+
 .field span,
 .output-row span,
 .parameter-summary span {
@@ -696,6 +712,18 @@ summary:focus-visible {
   overflow: auto;
 }
 
+.queue-controls,
+.panel-actions,
+.task-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.queue-controls {
+  margin-top: 12px;
+}
+
 .task-row {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -730,9 +758,75 @@ summary:focus-visible {
   background: var(--accent);
 }
 
+.progress-indeterminate span {
+  width: 36% !important;
+  animation: progress-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  100% {
+    transform: translateX(280%);
+  }
+}
+
 .task-row-bottom {
   color: var(--subtle);
   font-size: 0.76rem;
+}
+
+.task-actions {
+  margin-top: 10px;
+}
+
+.job-details {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.job-details summary {
+  cursor: pointer;
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.job-detail-block {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.job-detail-block span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.job-detail-block code,
+.job-log-card code {
+  display: block;
+  max-height: 160px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  color: #24313d;
+  background: #ffffff;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.job-error code {
+  border-color: #f3bbb5;
+  background: #fff2f0;
 }
 
 .status-running {
@@ -741,19 +835,80 @@ summary:focus-visible {
 }
 
 .status-queued,
-.status-paused {
+.status-canceling {
   color: var(--warning);
   background: #fff4dc;
 }
 
-.status-done {
+.status-success {
   color: var(--success);
   background: #e5f5ed;
 }
 
-.status-failed {
+.status-failed,
+.status-canceled {
   color: var(--danger);
   background: #fde8e5;
+}
+
+.job-runtime-message {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  color: var(--muted);
+  background: var(--surface-soft);
+  font-size: 0.8rem;
+}
+
+.job-runtime-error {
+  border-color: #f3bbb5;
+  color: var(--danger);
+  background: #fff2f0;
+}
+
+.empty-state,
+.empty-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.jobs-page-list,
+.job-log-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.empty-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 70px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--muted);
+  background: var(--surface-soft);
+}
+
+.job-log-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface-soft);
+}
+
+.job-log-card > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 0.84rem;
 }
 
 .log-list .secondary-action {

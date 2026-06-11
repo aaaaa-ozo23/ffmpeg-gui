@@ -1,6 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { AppErrorPayload, FfmpegHealth, MediaInfo } from "../app/types";
+import type {
+  AppErrorPayload,
+  FfmpegHealth,
+  JobQueueConfig,
+  JobRecord,
+  JobsEvent,
+  MediaInfo,
+} from "../app/types";
 import { MEDIA_DIALOG_FILTERS } from "./mediaFormats";
 
 const TAURI_UNAVAILABLE_ERROR: AppErrorPayload = {
@@ -76,5 +85,103 @@ export async function probeMedia(inputPath: string): Promise<MediaInfo> {
     return await invoke<MediaInfo>("probe_media", { inputPath });
   } catch (error) {
     throw normalizeAppError(error, "媒体探测失败");
+  }
+}
+
+export async function listJobs(): Promise<JobRecord[]> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  try {
+    return await invoke<JobRecord[]>("list_jobs");
+  } catch (error) {
+    throw normalizeAppError(error, "读取任务列表失败");
+  }
+}
+
+export async function getJobQueueConfig(): Promise<JobQueueConfig> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  try {
+    return await invoke<JobQueueConfig>("get_job_queue_config");
+  } catch (error) {
+    throw normalizeAppError(error, "读取任务配置失败");
+  }
+}
+
+export async function setJobQueueConfig(
+  maxConcurrent: number,
+): Promise<JobQueueConfig> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  try {
+    return await invoke<JobQueueConfig>("set_job_queue_config", {
+      maxConcurrent,
+    });
+  } catch (error) {
+    throw normalizeAppError(error, "更新任务配置失败");
+  }
+}
+
+export async function enqueueNullJob(
+  inputPath: string,
+  durationSec?: number,
+): Promise<JobRecord> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  try {
+    return await invoke<JobRecord>("enqueue_null_job", {
+      inputPath,
+      durationSec,
+    });
+  } catch (error) {
+    throw normalizeAppError(error, "创建验证任务失败");
+  }
+}
+
+export async function cancelJob(jobId: string): Promise<JobRecord> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  try {
+    return await invoke<JobRecord>("cancel_job", { jobId });
+  } catch (error) {
+    throw normalizeAppError(error, "取消任务失败");
+  }
+}
+
+export async function clearFinishedJobs(): Promise<JobRecord[]> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  try {
+    return await invoke<JobRecord[]>("clear_finished_jobs");
+  } catch (error) {
+    throw normalizeAppError(error, "清理已完成任务失败");
+  }
+}
+
+export async function listenToJobEvents(
+  handler: (event: JobsEvent) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  try {
+    return await listen<JobsEvent>("jobs-event", (event) => {
+      handler(event.payload);
+    });
+  } catch (error) {
+    throw normalizeAppError(error, "监听任务事件失败");
   }
 }

@@ -264,5 +264,73 @@
 | 我学到了什么？ | 见 findings.md |
 | 我做了什么？ | 见上方阶段 4 记录 |
 
+## 会话：2026-06-11
+
+### 阶段 5：任务系统、进度、取消与日志
+- **状态：** complete
+- 执行的操作：
+  - 确认当前分支为 `codex/job-system`。
+  - 将 `JobManager` 注册为 Tauri managed state，统一管理内存队列、运行中 `CommandChild`、任务日志和并发配置。
+  - 新增任务命令：`list_jobs`、`get_job`、`enqueue_null_job`、`cancel_job`、`clear_finished_jobs`、`get_job_queue_config`、`set_job_queue_config`。
+  - 新增 `jobs-event` 事件，前端启动时先 `list_jobs()`，再监听事件增量同步任务状态和日志。
+  - 实现可配置并发，默认 `maxConcurrent = 1`，允许 1-4；降低并发不终止已运行任务。
+  - 新增 Null 输出验证任务，调用项目内 `ffmpeg` sidecar 并输出到 Windows `NUL`，用于验证进度、取消和日志，不生成用户文件。
+  - 扩展 `ffmpeg/progress.rs`，按 `out_time_ms` 和媒体总时长计算运行进度，未知时长保持不定进度。
+  - 扩展结构化错误分类，覆盖任务不存在、无效配置、已结束任务取消、取消失败等场景。
+  - 前端移除右侧任务/日志 mock 数据，新增真实任务队列、并发选择、取消按钮、参数数组、stdout/stderr 和复制日志。
+  - 转换页主按钮改为“验证任务系统（Null 输出）”，仅在媒体探测成功后启用，并明确不是转换导出。
+  - 生成本地临时 MP4 做 Null 输出验证，路径包含中文和空格，未纳入 Git。
+- 创建/修改的文件：
+  - `src-tauri/src/commands/jobs.rs`
+  - `src-tauri/src/errors.rs`
+  - `src-tauri/src/ffmpeg/command_builder.rs`
+  - `src-tauri/src/ffmpeg/progress.rs`
+  - `src-tauri/src/jobs/mod.rs`
+  - `src-tauri/src/lib.rs`
+  - `src/app/App.tsx`
+  - `src/app/mockData.ts`
+  - `src/app/types.ts`
+  - `src/components/InspectorPanel.tsx`
+  - `src/components/TaskRow.tsx`
+  - `src/features/FeatureWorkspace.tsx`
+  - `src/features/convert/ConvertPanel.tsx`
+  - `src/features/jobs/JobsPanel.tsx`
+  - `src/lib/tauri.ts`
+  - `src/styles/global.css`
+  - `task_plan.md`
+  - `findings.md`
+  - `progress.md`
+
+## 阶段 5 测试结果
+| 测试 | 输入 | 预期结果 | 实际结果 | 状态 |
+|------|------|---------|---------|------|
+| sidecar 检查 | `pnpm.cmd run sidecar:check` | 项目内 ffmpeg/ffprobe 可运行且版本匹配 | FFmpeg/FFprobe 均为 `8.0.1-full_build-www.gyan.dev` | pass |
+| Rust 格式检查 | `cargo fmt --check` | 无格式变更需求 | 通过 | pass |
+| Rust 单元测试 | `cargo test` | 队列、并发、状态、取消、进度、日志截断、参数数组和错误序列化测试通过 | 27 个测试通过 | pass |
+| 前端构建 | `pnpm.cmd build` | TypeScript 与 Vite 构建通过 | 构建通过 | pass |
+| Tauri release 构建 | `pnpm.cmd run tauri:build` | 先检查 sidecar，再完成 release 构建和 bundle | 通过；仍有 `.app` identifier 已知警告 | pass |
+| Null 输出 smoke | `D:\tl-temp\ffmpeg-gui-stage5-jobs\job validation 中文 space sample.mp4` | FFmpeg 输出 progress 行并成功退出 | 退出码 0，stdout 包含 22 行 `out_time`/`progress` 相关输出，末尾为 `progress=end` | pass |
+| Tauri dev 冒烟 | `pnpm.cmd run tauri:dev` | sidecar 检查、Vite ready、Rust debug 编译并启动 app | 日志显示 `target\debug\ffmpeg-gui.exe` 启动，随后停止本次进程树 | pass |
+| Vite fallback | Edge headless 打开 `http://127.0.0.1:1421` | 普通浏览器环境不崩溃并显示 Tauri runtime fallback | DOM 包含“需要 Tauri 桌面运行时”，渲染长度 31451 | pass |
+| 人工 UI 点击验证 | Tauri 窗口中导入媒体、点击“验证任务系统”、取消任务 | UI 中确认 running、progress、cancel 和日志复制 | 本轮未执行交互点击；代码路径通过构建、单元测试和 dev 启动日志验证 | not run |
+
+## 阶段 5 错误日志
+| 时间戳 | 错误 | 尝试次数 | 解决方案 |
+|--------|------|---------|---------|
+| 2026-06-11 | `CommandEvent` receiver 按 Result 匹配导致编译失败 | 1 | 改为按实际事件流处理 `Option<CommandEvent>` |
+| 2026-06-11 | `dispatch` 中同时可变借用任务和运行中集合导致 borrow checker 报错 | 1 | 先收集待启动任务快照并释放锁，再 spawn 和回写 child |
+| 2026-06-11 | `cargo fmt --check` 首次发现新增 Rust 文件格式不符合 rustfmt | 1 | 运行 `cargo fmt` 后复验通过 |
+| 2026-06-11 | 生成阶段 5 临时 MP4 时 PowerShell 将 FFmpeg stderr 包装为 NativeCommandError | 1 | 使用显式退出码判断，并通过 Null 输出 smoke 复验 |
+| 2026-06-11 | 首次 Vite fallback 检查等待 `127.0.0.1:1421` 超时 | 1 | 改用 `pnpm.cmd exec vite --host 127.0.0.1 --port 1421 --strictPort` 后 Edge headless 验证通过 |
+
+## 阶段 5 五问重启检查
+| 问题 | 答案 |
+|------|------|
+| 我在哪里？ | 阶段 5：任务系统、进度、取消与日志已完成 |
+| 我要去哪里？ | 下一阶段应进入阶段 6：单文件格式转换 |
+| 目标是什么？ | 建立可复用长任务基础设施，并通过 Null 输出验证任务验证 FFmpeg 进度、取消和日志通道 |
+| 我学到了什么？ | 见 findings.md |
+| 我做了什么？ | 见上方阶段 5 记录 |
+
 ---
 *每个阶段完成后或遇到错误时更新此文件*

@@ -47,6 +47,25 @@ pub fn probe_args(input_path: impl AsRef<Path>) -> Vec<String> {
         .into_vec()
 }
 
+pub fn null_output_args(input_path: impl AsRef<Path>) -> Vec<String> {
+    CommandArgs::new()
+        .args(["-hide_banner", "-nostdin", "-re"])
+        .input_path(input_path)
+        .args([
+            "-map",
+            "0:v?",
+            "-map",
+            "0:a?",
+            "-f",
+            "null",
+            "-progress",
+            "pipe:1",
+            "-nostats",
+            "NUL",
+        ])
+        .into_vec()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,6 +109,32 @@ mod tests {
                 "-show_format",
                 "-show_streams",
                 r"D:\媒体 Tests\sample demo 中文.mp4"
+            ]
+        );
+    }
+
+    #[test]
+    fn builds_null_output_args_with_path_as_single_arg() {
+        let args = null_output_args(r"D:\媒体 Tests\sample demo 中文.mp4");
+
+        assert_eq!(
+            args,
+            vec![
+                "-hide_banner",
+                "-nostdin",
+                "-re",
+                "-i",
+                r"D:\媒体 Tests\sample demo 中文.mp4",
+                "-map",
+                "0:v?",
+                "-map",
+                "0:a?",
+                "-f",
+                "null",
+                "-progress",
+                "pipe:1",
+                "-nostats",
+                "NUL",
             ]
         );
     }
