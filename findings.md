@@ -90,6 +90,17 @@
 - loading 探测中的条目本轮不允许删除或排序，避免异步探测完成后把已删除条目重新插回。
 - 排序只影响转换页列表和后续尚未入队任务的创建顺序；已创建任务队列不重排。
 - 输出路径去重现在先预留所有已入队条目的固定输出文件名，再为待入队条目生成未占用的 `-2`、`-3` 后缀。
+- 阶段 7 视频截图分支 `codex/stage7-screenshot` 基于 `origin/codex/single-file-convert` 创建，未叠加 `codex/stage7-trim` 的截取实现。
+- 阶段 7 截取片段功能已在 `codex/stage7-trim` 独立分支完成；当前截图分支只实现视频截图，音频提取仍待后续独立分支。
+- 视频截图后端新增 `ScreenshotRequest` 和 `ScreenshotOutputFormat`，字段为 `inputPath`、`outputPath`、`outputFormat`、`timestampSec`、`overwrite`、`sourceDurationSec?`。
+- `JobKind` 新增 `screenshot`，`JobManager` 新增 `enqueue_screenshot_job`，截图任务复用现有 `jobs-event`、队列调度、取消、日志和完成状态。
+- 截图 FFmpeg 参数为 `-ss <timestamp> -i <input> -map 0:v:0 -frames:v 1 -an -sn`，PNG 使用 `-c:v png`，JPG 使用 `-c:v mjpeg -q:v 2`，并保留 `-progress pipe:1 -nostats`。
+- 截图输出路径继续由 Rust 后端校验：父目录存在、输出扩展名匹配、输出路径不能是目录、输出不能等于输入。
+- 截图前端新增 `src/features/screenshot/ScreenshotPanel.tsx`，使用独立单文件选择状态，不污染阶段 6 转换页批量状态。
+- 截图页只允许视频媒体；音频、图片和未知媒体会在 UI 中提示不可截图。
+- 截图时间输入支持 `SS`、`MM:SS`、`HH:MM:SS` 和小数秒，前端转换为秒后提交给后端。
+- 截图输出策略为“输出目录 + 自动命名”，文件名为 `<原文件名>-screenshot-<安全时间戳>.<png|jpg>`。
+- 阶段 7 截图 smoke 位于 `D:\tl-temp\ffmpeg-gui-stage7-screenshot-20260613-162756`，已验证英文、中文、空格路径视频可导出 PNG/JPG 截图并由 ffprobe 读取。
 
 ## 技术决策
 | 决策 | 理由 |
@@ -135,6 +146,10 @@
 | 删除已入队条目时取消未终态任务 | 用户将条目从转换页移除时，未完成的实际处理也应停止，避免隐藏任务继续消耗资源 |
 | 排序使用上移/下移按钮 | 不引入拖拽依赖，交互稳定且更容易在 Tauri 和浏览器 fallback 中验证 |
 | loading 条目禁用删除和排序 | 避免文件探测 Promise 完成后和用户操作产生竞态 |
+| 阶段 7 三个基础处理功能使用独立分支开发 | 截取、截图、音频提取可并行评审，避免功能互相叠加造成回滚或合并困难 |
+| 截图分支只支持单文件视频截图 | 符合阶段 7 v1 范围，批量截图留到阶段 9 批量队列能力 |
+| 截图只开放 PNG/JPG | 先覆盖最常见的图片输出，避免 WebP/BMP/TIFF 等格式把截图页扩展成第二个图片转换页 |
+| 截图页使用独立单文件选择状态 | 阶段 6 转换页已是批量选择，截图页不应复用并污染批量转换列表 |
 
 ## 遇到的问题
 | 问题 | 解决方案 |
@@ -164,6 +179,8 @@
 | 批量改造后 TypeScript 首次构建未能收窄 `BatchMediaItem[]` 到 ready item | 改用显式 `useMemo<ReadyBatchMediaItem[]>` 循环收集 ready 条目 |
 | 批量输出格式在媒体类型切换后可能短暂保留旧格式 | 将“输出格式属于当前媒体类型”纳入开始转换按钮启用条件 |
 | 批量改造后首次 `tauri:build` 失败，旧 release `ffmpeg-gui.exe` 锁住目标文件 | 定位并停止本仓库 release 进程后重跑成功 |
+| Browser runtime 不支持 `networkidle` load state | 改用支持的 `load` 状态完成截图页 fallback 验证 |
+| Tauri dev smoke 手动停止 debug app 后返回 `exit code 0xffffffff` | 记录为手动终止的预期结果；日志已确认 sidecar、Vite 和 debug app 启动成功 |
 
 ## 规划结论
 - 开发计划已写入 task_plan.md。
@@ -186,6 +203,7 @@
 - 窄屏布局中右侧面板下移，整体纵向滚动，无明显文本重叠或控件溢出。
 - 阶段 6 已用 in-app Browser 打开 `http://127.0.0.1:1421` 验证普通浏览器 fallback：URL/title 正确、页面非空、显示“需要 Tauri 桌面运行时”、无 console error/warn、旧 Null 输出文案消失。
 - 批量增强后再次用 in-app Browser 验证普通浏览器 fallback：转换页显示“批量选择媒体”“选择多个文件”“输出目录”和批量规则提示，控制台无 error/warn。
+- 阶段 7 截图分支已用 in-app Browser 打开 `http://127.0.0.1:1421` 并切到“截图”：显示“选择单个视频”“截图参数”、PNG/JPG 和 Tauri runtime fallback，console warn/error 数量为 0。
 
 ---
 *每执行2次查看/浏览器/搜索操作后更新此文件*

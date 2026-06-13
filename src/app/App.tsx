@@ -23,6 +23,7 @@ import type {
   JobStatus,
   JobsRuntimeState,
   MediaProbeState,
+  ScreenshotRequest,
   SidecarHealthState,
 } from "./types";
 import { AppSidebar } from "../components/AppSidebar";
@@ -33,10 +34,12 @@ import {
   checkFfmpegHealth,
   clearFinishedJobs,
   enqueueConvertJob,
+  enqueueScreenshotJob,
   getJobQueueConfig,
   listenToJobEvents,
   listJobs,
   probeMedia,
+  selectMediaFile,
   selectMediaFiles,
   setJobQueueConfig,
   toMediaSummary,
@@ -57,6 +60,10 @@ function App() {
     lifecycle: "collecting",
     items: [],
   });
+  const [screenshotMediaProbeState, setScreenshotMediaProbeState] =
+    useState<MediaProbeState>({
+      status: "empty",
+    });
   const [jobs, setJobs] = useState<JobRecord[]>([]);
   const [jobQueueConfig, setJobQueueConfigState] = useState<JobQueueConfig>({
     maxConcurrent: 1,
@@ -257,6 +264,36 @@ function App() {
     }
   }, [batchMediaState.items, batchMediaState.lifecycle]);
 
+  const handleSelectScreenshotMedia = useCallback(async () => {
+    let selectedPath: string | null = null;
+
+    try {
+      selectedPath = await selectMediaFile();
+      if (!selectedPath) {
+        return;
+      }
+
+      setScreenshotMediaProbeState({
+        status: "loading",
+        path: selectedPath,
+      });
+      setJobCommandError(undefined);
+
+      const media = await probeMedia(selectedPath);
+      setScreenshotMediaProbeState({
+        status: "ready",
+        media,
+        summary: toMediaSummary(media),
+      });
+    } catch (error) {
+      setScreenshotMediaProbeState({
+        status: "error",
+        path: selectedPath ?? undefined,
+        error: error as AppErrorPayload,
+      });
+    }
+  }, []);
+
   const handleEnqueueConvertJobs = useCallback(async (drafts: ConvertJobDraft[]) => {
     const createdJobs: Array<{
       draft: ConvertJobDraft;
@@ -350,6 +387,21 @@ function App() {
       setJobCommandError(error as AppErrorPayload);
     }
   }, []);
+
+  const handleEnqueueScreenshotJob = useCallback(
+    async (request: ScreenshotRequest) => {
+      try {
+        const job = await enqueueScreenshotJob(request);
+        setJobs((currentJobs) => upsertJob(currentJobs, job));
+        setJobCommandError(undefined);
+        setInspectorTab("tasks");
+        setActiveFeatureId("jobs");
+      } catch (error) {
+        setJobCommandError(error as AppErrorPayload);
+      }
+    },
+    [],
+  );
 
   const handleRemoveBatchItem = useCallback(
     async (itemId: string) => {
@@ -496,8 +548,16 @@ function App() {
               className="icon-button"
               type="button"
               aria-label="打开文件"
-              onClick={handleSelectMedia}
-              disabled={mediaProbeState.status === "loading"}
+              onClick={
+                activeFeatureId === "screenshot"
+                  ? handleSelectScreenshotMedia
+                  : handleSelectMedia
+              }
+              disabled={
+                activeFeatureId === "screenshot"
+                  ? screenshotMediaProbeState.status === "loading"
+                  : mediaProbeState.status === "loading"
+              }
             >
               <FolderOpen size={18} aria-hidden="true" />
             </button>
@@ -558,14 +618,17 @@ function App() {
           activeFeature={activeFeature}
           mediaState={mediaProbeState}
           batchMediaState={batchMediaState}
+          screenshotMediaState={screenshotMediaProbeState}
           jobs={jobs}
           jobQueueConfig={jobQueueConfig}
           jobsRuntime={jobsRuntime}
           jobCommandError={jobCommandError}
           onSelectMedia={handleSelectMedia}
+          onSelectScreenshotMedia={handleSelectScreenshotMedia}
           onRemoveBatchItem={handleRemoveBatchItem}
           onMoveBatchItem={handleMoveBatchItem}
           onEnqueueConvertJobs={handleEnqueueConvertJobs}
+          onEnqueueScreenshotJob={handleEnqueueScreenshotJob}
           onCancelJob={handleCancelJob}
           onClearFinishedJobs={handleClearFinishedJobs}
           onMaxConcurrentChange={handleMaxConcurrentChange}
