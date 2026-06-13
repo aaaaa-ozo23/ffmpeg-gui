@@ -1,5 +1,6 @@
 use crate::{
     errors::AppError,
+    ffmpeg::command_builder::ConvertRequest,
     jobs::{JobManager, JobQueueConfig, JobRecord},
 };
 
@@ -26,6 +27,15 @@ pub fn enqueue_null_job(
     durationSec: Option<f64>,
 ) -> Result<JobRecord, AppError> {
     job_manager.enqueue_null_job(app, inputPath, durationSec)
+}
+
+#[tauri::command]
+pub fn enqueue_convert_job(
+    app: tauri::AppHandle,
+    job_manager: tauri::State<'_, JobManager>,
+    request: ConvertRequest,
+) -> Result<JobRecord, AppError> {
+    job_manager.enqueue_convert_job(app, request)
 }
 
 #[tauri::command]

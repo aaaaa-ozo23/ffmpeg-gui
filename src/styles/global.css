@@ -538,9 +538,15 @@ select {
   background: #ffffff;
 }
 
+select:disabled {
+  color: #7d8995;
+  background: #f4f6f8;
+}
+
 select:focus-visible,
 button:focus-visible,
-summary:focus-visible {
+summary:focus-visible,
+input:focus-visible {
   outline: 2px solid #8ac7d6;
   outline-offset: 2px;
 }
@@ -586,6 +592,117 @@ summary:focus-visible {
   margin-top: 3px;
   color: var(--text);
   font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.output-row small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.batch-media-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.batch-media-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.batch-media-stats span {
+  min-height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 9px;
+  color: var(--muted);
+  background: #ffffff;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.batch-media-list {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.batch-media-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  min-height: 52px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--surface-soft);
+}
+
+.batch-media-item svg {
+  color: var(--accent);
+}
+
+.batch-media-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.batch-media-action {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.batch-media-action:hover {
+  color: var(--accent-strong);
+  border-color: #c8e3ea;
+  background: var(--accent-soft);
+}
+
+.batch-media-action-danger:hover {
+  color: var(--danger);
+  border-color: #f3bbb5;
+  background: #fff2f0;
+}
+
+.batch-media-action:disabled {
+  cursor: not-allowed;
+  color: var(--subtle);
+  border-color: var(--border);
+  background: var(--surface-muted);
+}
+
+.batch-media-item strong,
+.batch-media-item span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-media-item strong {
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+.batch-media-item span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .advanced-settings {
@@ -620,6 +737,22 @@ summary:focus-visible {
   padding: 10px;
   color: var(--muted);
   font-size: 0.84rem;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-top: 1px solid var(--border);
+  padding: 10px;
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+.checkbox-field input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
 }
 
 .parameter-summary {

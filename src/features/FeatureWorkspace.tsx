@@ -1,5 +1,8 @@
 import type {
   AppErrorPayload,
+  BatchMoveDirection,
+  BatchMediaState,
+  ConvertJobDraft,
   FeatureConfig,
   JobQueueConfig,
   JobRecord,
@@ -13,12 +16,15 @@ import { JobsPanel } from "./jobs/JobsPanel";
 type FeatureWorkspaceProps = {
   activeFeature: FeatureConfig;
   mediaState: MediaProbeState;
+  batchMediaState: BatchMediaState;
   jobs: JobRecord[];
   jobQueueConfig: JobQueueConfig;
   jobsRuntime: JobsRuntimeState;
   jobCommandError?: AppErrorPayload;
   onSelectMedia: () => void;
-  onEnqueueNullJob: () => void;
+  onRemoveBatchItem: (itemId: string) => void;
+  onMoveBatchItem: (itemId: string, direction: BatchMoveDirection) => void;
+  onEnqueueConvertJobs: (drafts: ConvertJobDraft[]) => Promise<void>;
   onCancelJob: (jobId: string) => void;
   onClearFinishedJobs: () => void;
   onMaxConcurrentChange: (value: number) => void;
@@ -29,12 +35,15 @@ type FeatureWorkspaceProps = {
 export function FeatureWorkspace({
   activeFeature,
   mediaState,
+  batchMediaState,
   jobs,
   jobQueueConfig,
   jobsRuntime,
   jobCommandError,
   onSelectMedia,
-  onEnqueueNullJob,
+  onRemoveBatchItem,
+  onMoveBatchItem,
+  onEnqueueConvertJobs,
   onCancelJob,
   onClearFinishedJobs,
   onMaxConcurrentChange,
@@ -45,9 +54,13 @@ export function FeatureWorkspace({
     return (
       <ConvertPanel
         mediaState={mediaState}
+        batchMediaState={batchMediaState}
         jobsRuntime={jobsRuntime}
+        commandError={jobCommandError}
         onSelectMedia={onSelectMedia}
-        onEnqueueNullJob={onEnqueueNullJob}
+        onRemoveBatchItem={onRemoveBatchItem}
+        onMoveBatchItem={onMoveBatchItem}
+        onEnqueueConvertJobs={onEnqueueConvertJobs}
       />
     );
   }

@@ -18,7 +18,57 @@ export type JobStatus =
   | "canceling"
   | "canceled";
 
-export type JobKind = "nullOutput";
+export type JobKind = "nullOutput" | "convert";
+
+export type ConvertMediaKind = "video" | "audio" | "image";
+
+export type ConvertOutputFormat =
+  | "mp4"
+  | "mkv"
+  | "mov"
+  | "webm"
+  | "mp3"
+  | "wav"
+  | "flac"
+  | "aac"
+  | "m4a"
+  | "ogg"
+  | "opus"
+  | "png"
+  | "jpg"
+  | "webp"
+  | "bmp"
+  | "tiff";
+
+export type ConvertMode = "auto" | "copy" | "custom";
+
+export type ConvertVideoCodec = "copy" | "h264" | "h265" | "vp9";
+
+export type ConvertAudioCodec =
+  | "copy"
+  | "aac"
+  | "mp3"
+  | "flac"
+  | "opus"
+  | "vorbis"
+  | "pcmS16le";
+
+export type ConvertRequest = {
+  inputPath: string;
+  outputPath: string;
+  mediaKind: ConvertMediaKind;
+  outputFormat: ConvertOutputFormat;
+  mode: ConvertMode;
+  videoCodec: ConvertVideoCodec;
+  audioCodec: ConvertAudioCodec;
+  overwrite: boolean;
+  durationSec?: number;
+};
+
+export type ConvertJobDraft = {
+  itemId: string;
+  request: ConvertRequest;
+};
 
 export type InspectorTab = "tasks" | "logs";
 
@@ -78,6 +128,36 @@ export type MediaProbeState =
   | { status: "loading"; path: string }
   | { status: "ready"; media: MediaInfo; summary: MediaSummary }
   | { status: "error"; path?: string; error: AppErrorPayload };
+
+export type BatchLifecycle = "collecting" | "running" | "complete";
+
+export type BatchMoveDirection = "up" | "down";
+
+export type BatchMediaItem =
+  | { id: string; path: string; status: "loading" }
+  | {
+      id: string;
+      path: string;
+      status: "ready";
+      media: MediaInfo;
+      summary: MediaSummary;
+      mediaKind: ConvertMediaKind;
+      jobId?: string;
+      outputPath?: string;
+      enqueueError?: AppErrorPayload;
+    }
+  | { id: string; path: string; status: "error"; error: AppErrorPayload };
+
+export type BatchMediaState =
+  | { status: "empty"; lifecycle: BatchLifecycle; items: [] }
+  | { status: "loading"; lifecycle: BatchLifecycle; items: BatchMediaItem[] }
+  | { status: "ready"; lifecycle: BatchLifecycle; items: BatchMediaItem[] }
+  | {
+      status: "error";
+      lifecycle: BatchLifecycle;
+      items: BatchMediaItem[];
+      error: AppErrorPayload;
+    };
 
 export type JobRecord = {
   id: string;

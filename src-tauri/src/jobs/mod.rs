@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{
     errors::{AppError, ErrorCategory},
     ffmpeg::{
-        command_builder::null_output_args,
+        command_builder::{convert_args, null_output_args, ConvertRequest},
         probe::validate_media_path,
         progress::{parse_out_time_ms, progress_percent},
     },
@@ -62,6 +62,7 @@ impl RunningProcess {
 #[serde(rename_all = "camelCase")]
 pub enum JobKind {
     NullOutput,
+    Convert,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -182,6 +183,25 @@ impl JobManager {
 
         let args = null_output_args(&input_path);
         let record = JobRecord::new_null_output(input_path, duration_sec, args);
+
+        {
+            let mut state = self.lock_state();
+            state.jobs.push(record.clone());
+        }
+
+        emit_job_event(&app, "jobQueued", record.clone(), None);
+        self.dispatch(app);
+
+        Ok(record)
+    }
+
+    pub fn enqueue_convert_job(
+        &self,
+        app: AppHandle,
+        request: ConvertRequest,
+    ) -> Result<JobRecord, AppError> {
+        let args = convert_args(&request)?;
+        let record = JobRecord::new_convert(request, args);
 
         {
             let mut state = self.lock_state();
@@ -486,6 +506,42 @@ impl JobRecord {
             error_message: None,
         }
     }
+
+    fn new_convert(request: ConvertRequest, args: Vec<String>) -> Self {
+        let file_name = file_name_from_path(&request.input_path);
+        let output_format = request.output_format.extension().to_uppercase();
+
+        Self {
+            id: Uuid::new_v4().to_string(),
+            kind: JobKind::Convert,
+            title: format!("转换为 {output_format}：{file_name}"),
+            input_path: request.input_path,
+            output_path: Some(request.output_path),
+            status: JobStatus::Queued,
+            progress_pct: None,
+            duration_sec: request.duration_sec,
+            created_at: now_ms(),
+            started_at: None,
+            finished_at: None,
+            args,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+            exit_code: None,
+            error_category: None,
+            error_message: None,
+        }
+    }
+}
+
+fn file_name_from_path(path: &str) -> String {
+    path.replace('\\', "/")
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .last()
+        .unwrap_or("媒体文件")
+        .to_string()
 }
 
 impl JobState {

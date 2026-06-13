@@ -1,9 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import type {
   AppErrorPayload,
+  ConvertOutputFormat,
+  ConvertRequest,
   FfmpegHealth,
   JobQueueConfig,
   JobRecord,
@@ -63,16 +65,59 @@ export async function checkFfmpegHealth(): Promise<FfmpegHealth> {
   }
 }
 
+export async function selectMediaFiles(): Promise<string[]> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  const selected = await open({
+    title: "选择媒体文件",
+    multiple: true,
+    directory: false,
+    filters: MEDIA_DIALOG_FILTERS,
+  });
+
+  if (!selected) {
+    return [];
+  }
+
+  return Array.isArray(selected) ? selected : [selected];
+}
+
 export async function selectMediaFile(): Promise<string | null> {
+  const selected = await selectMediaFiles();
+  return selected[0] ?? null;
+}
+
+export async function selectOutputDirectory(): Promise<string | null> {
   if (!isTauriRuntime()) {
     throw TAURI_UNAVAILABLE_ERROR;
   }
 
   return await open({
-    title: "选择媒体文件",
+    title: "选择输出目录",
     multiple: false,
-    directory: false,
-    filters: MEDIA_DIALOG_FILTERS,
+    directory: true,
+  });
+}
+
+export async function selectOutputFile(
+  defaultPath: string,
+  outputFormat: ConvertOutputFormat,
+): Promise<string | null> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  return await save({
+    title: "选择输出路径",
+    defaultPath,
+    filters: [
+      {
+        name: outputFormat.toUpperCase(),
+        extensions: [outputFormat],
+      },
+    ],
   });
 }
 
@@ -143,6 +188,20 @@ export async function enqueueNullJob(
     });
   } catch (error) {
     throw normalizeAppError(error, "创建验证任务失败");
+  }
+}
+
+export async function enqueueConvertJob(
+  request: ConvertRequest,
+): Promise<JobRecord> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  try {
+    return await invoke<JobRecord>("enqueue_convert_job", { request });
+  } catch (error) {
+    throw normalizeAppError(error, "创建转换任务失败");
   }
 }
 

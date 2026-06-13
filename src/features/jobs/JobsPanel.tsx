@@ -84,7 +84,7 @@ export function JobsPanel({
           ) : (
             <div className="empty-panel">
               <ListChecks size={22} aria-hidden="true" />
-              <p>暂无任务。导入媒体后，可在转换页创建 Null 输出验证任务。</p>
+              <p>暂无任务。导入媒体后，可在转换页创建格式转换任务。</p>
             </div>
           )}
         </div>

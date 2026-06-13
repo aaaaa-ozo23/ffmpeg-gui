@@ -332,5 +332,104 @@
 | 我学到了什么？ | 见 findings.md |
 | 我做了什么？ | 见上方阶段 5 记录 |
 
+### 阶段 6：单文件格式转换
+- **状态：** complete
+- 执行的操作：
+  - 确认当前分支 `codex/single-file-convert` 误建在阶段 1 基线，仅有未跟踪 `src-tauri/binaries/` 本地 sidecar。
+  - 使用 `git merge --ff-only codex/job-system` 将当前分支快进到阶段 5 基线，保留本地未跟踪 sidecar。
+  - 新增 `ConvertRequest`、`ConvertMediaKind`、`ConvertOutputFormat`、`ConvertMode`、`ConvertVideoCodec`、`ConvertAudioCodec`。
+  - 在 `ffmpeg/command_builder.rs` 新增转换参数构造与校验：输入路径、输出路径、父目录、扩展名、同路径、媒体类型与输出格式匹配、覆盖策略。
+  - `JobKind` 新增 `convert`，`JobManager` 新增 `enqueue_convert_job`，真实转换任务复用阶段 5 队列、进度、取消、日志和 `jobs-event`。
+  - 注册 Tauri command `enqueue_convert_job`。
+  - 前端新增 `ConvertRequest` 类型、输出格式矩阵、`selectOutputFile` 和 `enqueueConvertJob` typed invoke。
+  - 转换页从静态表单改为受控表单：按媒体类型过滤输出格式、自动生成默认输出路径、保存对话框选择输出路径、auto/copy/custom 模式、覆盖开关、真实“开始转换”。
+  - 任务页和右侧 inspector 将阶段 5 的 Null 输出提示替换为格式转换任务提示。
+  - 用项目内 FFmpeg sidecar 生成临时素材并做真实转换 smoke，路径包含中文和空格。
+  - 将转换页从单文件输入补强为同类多文件批量输入。
+  - 新增批量媒体状态，每个条目保留路径、探测状态、媒体类型、摘要或错误。
+  - 前端文件选择改为 `multiple: true`，选择后逐个调用 `probe_media`。
+  - 保留第一个成功条目派生的 `MediaProbeState`，兼容现有摘要与占位组件。
+  - 输出路径从保存文件改为选择输出目录，并按 `<原文件名>-converted.<目标格式>` 自动生成。
+  - 同批次输出 basename 冲突时追加 `-2`、`-3` 去重。
+  - 混选视频、音频、图片时禁用开始按钮并提示分批处理。
+  - 不新增后端批量 command，前端顺序调用 `enqueue_convert_job`，每个文件仍是独立转换任务。
+  - 调整普通浏览器 fallback 下的批量入口文案与输出目录提示。
+  - 新增批量生命周期：`collecting`、`running`、`complete`。
+  - 调整再次选择文件的行为：未开始或运行中追加，当前批次任务全部终态后覆盖。
+  - ready 条目新增 `jobId`、固定 `outputPath` 和 `enqueueError`，避免已入队条目重复创建任务。
+  - 开始转换时只为未入队或入队失败的 ready 条目生成 `ConvertJobDraft`。
+  - 输出路径生成把已入队和待入队条目一起计入同名去重，已入队条目保留原输出路径。
+  - 转换页增加待入队、已入队、批次生命周期、入队失败统计和完成批次提示。
+  - 批量媒体列表新增删除、上移和下移操作，默认顺序仍按用户选择/追加顺序保留。
+  - 删除未入队、入队失败或探测失败条目时直接从转换页列表移除；loading 探测中条目暂不允许删除。
+  - 删除已入队且未终态条目时先调用 `cancel_job`，取消成功或后端已终态后再移出转换页列表；任务页记录和日志保留。
+  - 排序只影响转换页列表和后续尚未入队条目的创建顺序，已创建任务的实际队列顺序不重排。
+  - 批量输出路径去重先保留已入队条目的固定 `outputPath` 文件名，再按当前列表顺序为待入队条目生成 `-2`、`-3` 后缀。
+- 创建/修改的文件：
+  - `src-tauri/src/commands/jobs.rs`
+  - `src-tauri/src/ffmpeg/command_builder.rs`
+  - `src-tauri/src/jobs/mod.rs`
+  - `src-tauri/src/lib.rs`
+  - `src/app/App.tsx`
+  - `src/app/types.ts`
+  - `src/components/InspectorPanel.tsx`
+  - `src/features/FeatureWorkspace.tsx`
+  - `src/features/convert/ConvertPanel.tsx`
+  - `src/features/jobs/JobsPanel.tsx`
+  - `src/lib/index.ts`
+  - `src/lib/mediaFormats.ts`
+  - `src/lib/tauri.ts`
+  - `src/styles/global.css`
+  - `task_plan.md`
+  - `findings.md`
+  - `progress.md`
+
+## 阶段 6 测试结果
+| 测试 | 输入 | 预期结果 | 实际结果 | 状态 |
+|------|------|---------|---------|------|
+| Rust 格式检查 | `cargo fmt --check` | 无格式变更需求 | 通过 | pass |
+| Rust 单元测试 | `cargo test` | 转换请求校验、路径校验、参数数组、任务队列回归测试通过 | 35 个测试通过 | pass |
+| sidecar 检查 | `pnpm.cmd run sidecar:check` | 项目内 ffmpeg/ffprobe 可运行且版本匹配 | FFmpeg/FFprobe 均为 `8.0.1-full_build-www.gyan.dev` | pass |
+| 前端构建 | `pnpm.cmd build` | TypeScript 与 Vite 构建通过 | 构建通过 | pass |
+| Tauri release 构建 | `pnpm.cmd run tauri:build` | sidecar 检查、前端构建、Rust release 编译和 MSI/NSIS 打包通过 | 通过，生成 MSI 与 NSIS；仍有 `.app` identifier 已知警告 | pass |
+| Tauri dev 冒烟 | `pnpm.cmd run tauri:dev` | sidecar 检查、Vite ready、Rust debug 编译并启动 app | 日志显示 `target\debug\ffmpeg-gui.exe` 启动，随后停止本次进程树 | pass |
+| 视频转换 smoke | `D:\tl-temp\ffmpeg-gui-stage6-convert-20260611-173454` | 视频输入可输出 MP4/MKV/WebM 并可探测 | 三个输出均被 ffprobe 读取，包含 video,audio streams | pass |
+| 音频转换 smoke | `D:\tl-temp\ffmpeg-gui-stage6-convert-20260611-173454` | 音频输入可输出 MP3/WAV/FLAC/Opus 并可探测 | 四个输出均被 ffprobe 读取，包含 audio stream | pass |
+| 图片转换 smoke | `D:\tl-temp\ffmpeg-gui-stage6-convert-20260611-173454` | 图片输入可输出 PNG/JPG/WebP 并可探测 | 三个输出均被 ffprobe 读取，包含 video stream | pass |
+| Browser/Vite fallback | Browser 打开 `http://127.0.0.1:1421` | 普通浏览器环境不崩溃，显示 Tauri runtime fallback，无 console error/warn | URL/title 正确，页面非空，旧 Null 文案消失，console 无 error/warn | pass |
+| 批量 UI fallback | Browser 打开 `http://127.0.0.1:1421` | 普通浏览器环境显示批量入口和输出目录提示，且不触发 console error/warn | 显示“批量选择媒体”“选择多个文件”“输出目录”“支持一次选择多个同类视频、音频或图片文件。”，console 无 warn/error | pass |
+| 批量逻辑审阅 | `src/features/convert/ConvertPanel.tsx` / `src/app/App.tsx` | 多选探测、同类校验、失败保留、输出命名去重、逐任务 enqueue 符合计划 | 已确认批量状态、混选禁用、失败条目保留、`-2`/`-3` 去重和顺序调用 `enqueue_convert_job` | pass |
+| 批量生命周期构建验证 | `pnpm.cmd build` | TypeScript 和 Vite 构建通过 | 构建通过，生命周期类型、草稿请求和转换页 UI 均通过类型检查 | pass |
+| 批量生命周期静态审阅 | `src/app/App.tsx` / `src/features/convert/ConvertPanel.tsx` | 连续选择追加、完成后覆盖、已入队不重复、失败可重试、输出路径固定 | 已确认 `complete` 后选择会重置列表，`running/collecting` 会追加，按钮只提交无 `jobId` 条目 | pass |
+| 批量生命周期 Browser fallback | Browser 打开 `http://127.0.0.1:1421` | 普通浏览器环境显示批量入口，Tauri fallback 正常，无 console error/warn | 显示批量选择、输出目录和 Tauri runtime fallback；旧 Null 文案不存在；console 无 warn/error | pass |
+| 批量列表管理构建验证 | `pnpm.cmd build` | 删除/排序回调、图标按钮和输出路径去重通过类型检查 | 构建通过 | pass |
+| 批量列表管理静态审阅 | `src/app/App.tsx` / `src/features/convert/ConvertPanel.tsx` | 删除条目规则、取消未终态任务、loading 禁用操作、排序边界和后续入队顺序符合计划 | 已确认删除已入队未终态条目前调用 `cancel_job`，取消失败保留条目；上移/下移边界禁用；已入队输出名优先参与去重 | pass |
+| 批量列表管理 Browser fallback | Browser 打开 `http://127.0.0.1:1421` | 普通浏览器环境仍显示批量入口和 Tauri runtime fallback，无 console error/warn | URL/title 正确，显示“批量选择媒体”“选择多个文件”“输出目录”和 Tauri runtime fallback；旧 Null 文案不存在；console 无 warn/error | pass |
+
+## 阶段 6 错误日志
+| 时间戳 | 错误 | 尝试次数 | 解决方案 |
+|--------|------|---------|---------|
+| 2026-06-11 | `cargo fmt --check` 首次发现新增 Rust 代码格式不符合 rustfmt | 1 | 运行 `cargo fmt` 后复验通过 |
+| 2026-06-11 | 直接 PowerShell 调用 FFmpeg smoke 时，正常 stderr 仍被包装为 `NativeCommandError` | 1 | 放弃 PowerShell native 调用，改用 Python `subprocess.run([...])` 参数数组启动 sidecar |
+| 2026-06-11 | Python inline 脚本中的中文字面量经 PowerShell here-string 变成 `?` 导致路径非法 | 1 | 改用 Unicode escape 构造中文路径后 smoke 通过 |
+| 2026-06-11 | 首次 `pnpm.cmd run tauri:build` 因工具超时截断，但 makensis 子进程仍在完成打包 | 1 | 等待 makensis 结束并用更长超时重跑 `tauri:build`，取得成功退出码 |
+| 2026-06-11 | Browser 快照发现右侧 inspector 仍提示 Null 输出验证任务 | 1 | 更新 `InspectorPanel` 文案并复验旧文案消失 |
+| 2026-06-11 | 批量改造后前端构建首次无法自动收窄 ready 条目类型 | 1 | 使用显式 `useMemo<ReadyBatchMediaItem[]>` 循环收集 ready 条目 |
+| 2026-06-11 | 批量改造后发现媒体类型切换时输出格式可能短暂保留旧值 | 1 | 将当前输出格式是否属于当前媒体类型纳入开始按钮启用条件 |
+| 2026-06-11 | 批量改造后首次 `pnpm.cmd run tauri:build` 失败，旧 release `ffmpeg-gui.exe` 锁定目标文件 | 1 | 停止本仓库 release 进程后重跑成功 |
+| 2026-06-13 | 批量生命周期改造后首次 `pnpm.cmd build` 发现空批量状态缺少 `lifecycle`，且转换页残留未使用 `ConvertRequest` import | 1 | 补齐空状态 `lifecycle: "collecting"` 并移除未使用 import 后构建通过 |
+| 2026-06-13 | 一次 `rg` 检查命令被 PowerShell 引号解析成非法路径 | 1 | 改用单引号包裹正则后重新检查 |
+| 2026-06-13 | Tauri dev smoke 主进程停止后 Vite 子进程仍监听 1420 | 1 | 按端口定位并停止 Vite 子进程，后续 Browser fallback 改用 1421 独立预览 |
+| 2026-06-13 | 批量列表管理验证后发现 Tauri dev smoke 仍留下 debug app 和 Vite 1420 监听 | 1 | 按本仓库 debug/release app 路径和 1420/1421 监听进程清理，复查无剩余监听 |
+
+## 阶段 6 五问重启检查
+| 问题 | 答案 |
+|------|------|
+| 我在哪里？ | 阶段 6：格式转换已完成，并已补强同类多文件批量转换、批次生命周期、列表删除与上移/下移排序 |
+| 我要去哪里？ | 下一阶段应进入阶段 7：截取、截图、音频提取 |
+| 目标是什么？ | 完成首个真实处理功能，覆盖现有输入格式，支持常用视频、音频、图片输出，并可按批次生命周期追加或覆盖同类批量转换任务，也可管理已选择文件列表 |
+| 我学到了什么？ | 见 findings.md |
+| 我做了什么？ | 见上方阶段 6 记录 |
+
 ---
 *每个阶段完成后或遇到错误时更新此文件*

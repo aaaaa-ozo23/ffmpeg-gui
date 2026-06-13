@@ -14,6 +14,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::jobs::cancel_job,
             commands::jobs::clear_finished_jobs,
+            commands::jobs::enqueue_convert_job,
             commands::jobs::enqueue_null_job,
             commands::jobs::get_job,
             commands::jobs::get_job_queue_config,

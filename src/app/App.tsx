@@ -11,10 +11,16 @@ import {
 import { featureConfigs } from "./mockData";
 import type {
   AppErrorPayload,
+  BatchMoveDirection,
+  BatchMediaItem,
+  BatchMediaState,
+  ConvertJobDraft,
+  ConvertMediaKind,
   FeatureId,
   InspectorTab,
   JobQueueConfig,
   JobRecord,
+  JobStatus,
   JobsRuntimeState,
   MediaProbeState,
   SidecarHealthState,
@@ -26,12 +32,12 @@ import {
   cancelJob,
   checkFfmpegHealth,
   clearFinishedJobs,
-  enqueueNullJob,
+  enqueueConvertJob,
   getJobQueueConfig,
   listenToJobEvents,
   listJobs,
   probeMedia,
-  selectMediaFile,
+  selectMediaFiles,
   setJobQueueConfig,
   toMediaSummary,
 } from "../lib";
@@ -45,6 +51,11 @@ function App() {
   });
   const [mediaProbeState, setMediaProbeState] = useState<MediaProbeState>({
     status: "empty",
+  });
+  const [batchMediaState, setBatchMediaState] = useState<BatchMediaState>({
+    status: "empty",
+    lifecycle: "collecting",
+    items: [],
   });
   const [jobs, setJobs] = useState<JobRecord[]>([]);
   const [jobQueueConfig, setJobQueueConfigState] = useState<JobQueueConfig>({
@@ -126,50 +137,287 @@ function App() {
     };
   }, []);
 
-  const handleSelectMedia = useCallback(async () => {
-    let selectedPath: string | null = null;
+  useEffect(() => {
+    setBatchMediaState((currentState) =>
+      syncBatchLifecycle(currentState, jobs),
+    );
+  }, [jobs]);
 
+  const handleSelectMedia = useCallback(async () => {
     try {
-      selectedPath = await selectMediaFile();
-      if (!selectedPath) {
+      const selectedPaths = await selectMediaFiles();
+      if (selectedPaths.length === 0) {
         return;
       }
 
-      setMediaProbeState({ status: "loading", path: selectedPath });
+      const shouldReplaceBatch = batchMediaState.lifecycle === "complete";
+      const baseItems = shouldReplaceBatch
+        ? []
+        : batchMediaState.items.filter((item) => item.status !== "loading");
+      const existingPathKeys = new Set(
+        baseItems.map((item) => normalizePathKey(item.path)),
+      );
+      const selectedPathKeys = new Set<string>();
+      const newPaths = selectedPaths.filter((path) => {
+        const pathKey = normalizePathKey(path);
+        if (existingPathKeys.has(pathKey) || selectedPathKeys.has(pathKey)) {
+          return false;
+        }
 
-      const media = await probeMedia(selectedPath);
-      setMediaProbeState({
-        status: "ready",
-        media,
-        summary: toMediaSummary(media),
+        selectedPathKeys.add(pathKey);
+        return true;
       });
+
+      if (newPaths.length === 0) {
+        setJobCommandError(undefined);
+        return;
+      }
+
+      const nextLifecycle = shouldReplaceBatch
+        ? "collecting"
+        : batchMediaState.lifecycle;
+      const loadingItems = newPaths.map((path) => ({
+        id: mediaItemId(path),
+        path,
+        status: "loading" as const,
+      }));
+      setBatchMediaState(
+        batchStateFromItems([...baseItems, ...loadingItems], nextLifecycle),
+      );
+      setMediaProbeState({ status: "loading", path: newPaths[0] });
+      setJobCommandError(undefined);
+
+      const items = await Promise.all(
+        newPaths.map(async (path): Promise<BatchMediaItem> => {
+          try {
+            const media = await probeMedia(path);
+            const summary = toMediaSummary(media);
+            const mediaKind = inferConvertMediaKind(summary.mediaKind);
+            if (!mediaKind) {
+              return {
+                id: mediaItemId(path),
+                path,
+                status: "error",
+                error: {
+                  category: "unsupportedMediaKind",
+                  message: "当前媒体类型不在批量转换范围内。",
+                  detail: summary.mediaKind,
+                },
+              };
+            }
+
+            return {
+              id: mediaItemId(path),
+              path,
+              status: "ready",
+              media,
+              summary,
+              mediaKind,
+            };
+          } catch (error) {
+            return {
+              id: mediaItemId(path),
+              path,
+              status: "error",
+              error: error as AppErrorPayload,
+            };
+          }
+        }),
+      );
+
+      const fallbackItems = [...baseItems, ...items];
+      setBatchMediaState((currentState) => {
+        const probedItemsById = new Map(items.map((item) => [item.id, item]));
+        const mergedItems = currentState.items.map((item) =>
+          probedItemsById.get(item.id) ?? item,
+        );
+        const existingIds = new Set(mergedItems.map((item) => item.id));
+
+        for (const item of items) {
+          if (!existingIds.has(item.id)) {
+            mergedItems.push(item);
+          }
+        }
+
+        return batchStateFromItems(mergedItems, currentState.lifecycle);
+      });
+      setMediaProbeState(mediaProbeStateFromBatchItems(fallbackItems));
     } catch (error) {
+      const payload = error as AppErrorPayload;
       setMediaProbeState({
         status: "error",
-        path: selectedPath ?? undefined,
-        error: error as AppErrorPayload,
+        error: payload,
+      });
+      setBatchMediaState({
+        status: "error",
+        lifecycle: "collecting",
+        items: [],
+        error: payload,
       });
     }
-  }, []);
+  }, [batchMediaState.items, batchMediaState.lifecycle]);
 
-  const handleEnqueueNullJob = useCallback(async () => {
-    if (mediaProbeState.status !== "ready") {
+  const handleEnqueueConvertJobs = useCallback(async (drafts: ConvertJobDraft[]) => {
+    const createdJobs: Array<{
+      draft: ConvertJobDraft;
+      job: JobRecord;
+    }> = [];
+    const failures: Array<{
+      draft: ConvertJobDraft;
+      error: AppErrorPayload;
+    }> = [];
+
+    if (drafts.length === 0) {
       return;
     }
 
     try {
-      const job = await enqueueNullJob(
-        mediaProbeState.media.path,
-        mediaProbeState.media.durationSec,
+      for (const draft of drafts) {
+        try {
+          const job = await enqueueConvertJob(draft.request);
+          createdJobs.push({ draft, job });
+        } catch (error) {
+          failures.push({ draft, error: error as AppErrorPayload });
+        }
+      }
+
+      if (createdJobs.length > 0) {
+        setJobs((currentJobs) =>
+          createdJobs
+            .map((createdJob) => createdJob.job)
+            .reduce(upsertJob, currentJobs),
+        );
+      }
+
+      setBatchMediaState((currentState) => {
+        const createdJobsByItemId = new Map(
+          createdJobs.map((createdJob) => [
+            createdJob.draft.itemId,
+            createdJob,
+          ]),
+        );
+        const failuresByItemId = new Map(
+          failures.map((failure) => [failure.draft.itemId, failure]),
+        );
+        const items = currentState.items.map((item) => {
+          if (item.status !== "ready") {
+            return item;
+          }
+
+          const createdJob = createdJobsByItemId.get(item.id);
+          if (createdJob) {
+            return {
+              ...item,
+              jobId: createdJob.job.id,
+              outputPath: createdJob.draft.request.outputPath,
+              enqueueError: undefined,
+            };
+          }
+
+          const failure = failuresByItemId.get(item.id);
+          if (failure) {
+            return {
+              ...item,
+              enqueueError: failure.error,
+            };
+          }
+
+          return item;
+        });
+
+        return batchStateFromItems(
+          items,
+          createdJobs.length > 0 ? "running" : currentState.lifecycle,
+        );
+      });
+
+      setJobCommandError(
+        failures.length > 0
+          ? {
+              category: "batchEnqueuePartialFailure",
+              message: `有 ${failures.length} 个转换任务创建失败。`,
+              detail: failures
+                .map((failure) => failure.error.message)
+                .join("\n"),
+            }
+          : undefined,
       );
-      setJobs((currentJobs) => upsertJob(currentJobs, job));
-      setJobCommandError(undefined);
       setInspectorTab("tasks");
-      setActiveFeatureId("jobs");
+      if (createdJobs.length > 0) {
+        setActiveFeatureId("jobs");
+      }
     } catch (error) {
       setJobCommandError(error as AppErrorPayload);
     }
-  }, [mediaProbeState]);
+  }, []);
+
+  const handleRemoveBatchItem = useCallback(
+    async (itemId: string) => {
+      const item = batchMediaState.items.find(
+        (currentItem) => currentItem.id === itemId,
+      );
+      if (!item || item.status === "loading") {
+        return;
+      }
+
+      if (item.status === "ready" && item.jobId) {
+        const job = jobs.find((currentJob) => currentJob.id === item.jobId);
+        if (!job || !isTerminalJobStatus(job.status)) {
+          try {
+            const canceledJob = await cancelJob(item.jobId);
+            setJobs((currentJobs) => upsertJob(currentJobs, canceledJob));
+          } catch (error) {
+            const payload = error as AppErrorPayload;
+            if (payload.category !== "jobAlreadyFinished") {
+              setJobCommandError(payload);
+              return;
+            }
+          }
+        }
+      }
+
+      const nextItems = batchMediaState.items.filter(
+        (currentItem) => currentItem.id !== itemId,
+      );
+      setBatchMediaState((currentState) =>
+        syncBatchLifecycle(
+          batchStateFromItems(
+            currentState.items.filter(
+              (currentItem) => currentItem.id !== itemId,
+            ),
+            currentState.lifecycle,
+          ),
+          jobs,
+        ),
+      );
+      setMediaProbeState(mediaProbeStateFromBatchItems(nextItems));
+      setJobCommandError(undefined);
+    },
+    [batchMediaState.items, jobs],
+  );
+
+  const handleMoveBatchItem = useCallback(
+    (itemId: string, direction: BatchMoveDirection) => {
+      const nextItems = moveBatchItem(
+        batchMediaState.items,
+        itemId,
+        direction,
+      );
+      if (nextItems === batchMediaState.items) {
+        return;
+      }
+
+      setBatchMediaState((currentState) =>
+        batchStateFromItems(
+          moveBatchItem(currentState.items, itemId, direction),
+          currentState.lifecycle,
+        ),
+      );
+      setMediaProbeState(mediaProbeStateFromBatchItems(nextItems));
+      setJobCommandError(undefined);
+    },
+    [batchMediaState.items],
+  );
 
   const handleCancelJob = useCallback(async (jobId: string) => {
     try {
@@ -309,12 +557,15 @@ function App() {
         <FeatureWorkspace
           activeFeature={activeFeature}
           mediaState={mediaProbeState}
+          batchMediaState={batchMediaState}
           jobs={jobs}
           jobQueueConfig={jobQueueConfig}
           jobsRuntime={jobsRuntime}
           jobCommandError={jobCommandError}
           onSelectMedia={handleSelectMedia}
-          onEnqueueNullJob={handleEnqueueNullJob}
+          onRemoveBatchItem={handleRemoveBatchItem}
+          onMoveBatchItem={handleMoveBatchItem}
+          onEnqueueConvertJobs={handleEnqueueConvertJobs}
           onCancelJob={handleCancelJob}
           onClearFinishedJobs={handleClearFinishedJobs}
           onMaxConcurrentChange={handleMaxConcurrentChange}
@@ -341,6 +592,146 @@ function App() {
 }
 
 export default App;
+
+function mediaItemId(path: string) {
+  return normalizePathKey(path);
+}
+
+function normalizePathKey(path: string) {
+  return path.replace(/\\/g, "/").toLowerCase();
+}
+
+function inferConvertMediaKind(mediaKind: string): ConvertMediaKind | undefined {
+  if (mediaKind === "视频") {
+    return "video";
+  }
+
+  if (mediaKind === "音频") {
+    return "audio";
+  }
+
+  if (mediaKind === "图片") {
+    return "image";
+  }
+
+  return undefined;
+}
+
+function batchStateFromItems(
+  items: BatchMediaItem[],
+  lifecycle: BatchMediaState["lifecycle"] = "collecting",
+): BatchMediaState {
+  if (items.length === 0) {
+    return { status: "empty", lifecycle: "collecting", items: [] };
+  }
+
+  const hasLoading = items.some((item) => item.status === "loading");
+  const hasReady = items.some((item) => item.status === "ready");
+  const hasError = items.some((item) => item.status === "error");
+
+  if (hasLoading) {
+    return { status: "loading", lifecycle, items };
+  }
+
+  if (hasReady) {
+    return { status: "ready", lifecycle, items };
+  }
+
+  if (hasError) {
+    return {
+      status: "error",
+      lifecycle,
+      items,
+      error: {
+        category: "batchProbeFailed",
+        message: "所选文件均未能读取媒体信息。",
+      },
+    };
+  }
+
+  return { status: "empty", lifecycle: "collecting", items: [] };
+}
+
+function syncBatchLifecycle(
+  batchMediaState: BatchMediaState,
+  jobs: JobRecord[],
+): BatchMediaState {
+  const jobIds = batchMediaState.items.flatMap((item) =>
+    item.status === "ready" && item.jobId ? [item.jobId] : [],
+  );
+
+  if (jobIds.length === 0) {
+    if (batchMediaState.lifecycle === "collecting") {
+      return batchMediaState;
+    }
+
+    return { ...batchMediaState, lifecycle: "collecting" };
+  }
+
+  const jobsById = new Map(jobs.map((job) => [job.id, job]));
+  const allJobsTerminal = jobIds.every((jobId) => {
+    const job = jobsById.get(jobId);
+    return !job || isTerminalJobStatus(job.status);
+  });
+  const nextLifecycle = allJobsTerminal ? "complete" : "running";
+
+  return batchMediaState.lifecycle === nextLifecycle
+    ? batchMediaState
+    : { ...batchMediaState, lifecycle: nextLifecycle };
+}
+
+function isTerminalJobStatus(status: JobStatus) {
+  return status === "success" || status === "failed" || status === "canceled";
+}
+
+function moveBatchItem(
+  items: BatchMediaItem[],
+  itemId: string,
+  direction: BatchMoveDirection,
+) {
+  const itemIndex = items.findIndex((item) => item.id === itemId);
+  if (itemIndex === -1 || items[itemIndex].status === "loading") {
+    return items;
+  }
+
+  const targetIndex = direction === "up" ? itemIndex - 1 : itemIndex + 1;
+  if (
+    targetIndex < 0 ||
+    targetIndex >= items.length ||
+    items[targetIndex].status === "loading"
+  ) {
+    return items;
+  }
+
+  const nextItems = [...items];
+  [nextItems[itemIndex], nextItems[targetIndex]] = [
+    nextItems[targetIndex],
+    nextItems[itemIndex],
+  ];
+  return nextItems;
+}
+
+function mediaProbeStateFromBatchItems(items: BatchMediaItem[]): MediaProbeState {
+  const firstReady = items.find((item) => item.status === "ready");
+  if (firstReady?.status === "ready") {
+    return {
+      status: "ready",
+      media: firstReady.media,
+      summary: firstReady.summary,
+    };
+  }
+
+  const firstError = items.find((item) => item.status === "error");
+  if (firstError?.status === "error") {
+    return {
+      status: "error",
+      path: firstError.path,
+      error: firstError.error,
+    };
+  }
+
+  return { status: "empty" };
+}
 
 function upsertJob(jobs: JobRecord[], job: JobRecord) {
   const existingIndex = jobs.findIndex((currentJob) => currentJob.id === job.id);
