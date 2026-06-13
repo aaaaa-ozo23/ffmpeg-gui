@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{
     errors::{AppError, ErrorCategory},
     ffmpeg::{
-        command_builder::{convert_args, null_output_args, ConvertRequest},
+        command_builder::{convert_args, null_output_args, trim_args, ConvertRequest, TrimRequest},
         probe::validate_media_path,
         progress::{parse_out_time_ms, progress_percent},
     },
@@ -63,6 +63,7 @@ impl RunningProcess {
 pub enum JobKind {
     NullOutput,
     Convert,
+    Trim,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -202,6 +203,25 @@ impl JobManager {
     ) -> Result<JobRecord, AppError> {
         let args = convert_args(&request)?;
         let record = JobRecord::new_convert(request, args);
+
+        {
+            let mut state = self.lock_state();
+            state.jobs.push(record.clone());
+        }
+
+        emit_job_event(&app, "jobQueued", record.clone(), None);
+        self.dispatch(app);
+
+        Ok(record)
+    }
+
+    pub fn enqueue_trim_job(
+        &self,
+        app: AppHandle,
+        request: TrimRequest,
+    ) -> Result<JobRecord, AppError> {
+        let args = trim_args(&request)?;
+        let record = JobRecord::new_trim(request, args);
 
         {
             let mut state = self.lock_state();
@@ -520,6 +540,32 @@ impl JobRecord {
             status: JobStatus::Queued,
             progress_pct: None,
             duration_sec: request.duration_sec,
+            created_at: now_ms(),
+            started_at: None,
+            finished_at: None,
+            args,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+            exit_code: None,
+            error_category: None,
+            error_message: None,
+        }
+    }
+
+    fn new_trim(request: TrimRequest, args: Vec<String>) -> Self {
+        let file_name = file_name_from_path(&request.input_path);
+
+        Self {
+            id: Uuid::new_v4().to_string(),
+            kind: JobKind::Trim,
+            title: format!("截取片段：{file_name}"),
+            input_path: request.input_path,
+            output_path: Some(request.output_path),
+            status: JobStatus::Queued,
+            progress_pct: None,
+            duration_sec: Some(request.end_sec - request.start_sec),
             created_at: now_ms(),
             started_at: None,
             finished_at: None,

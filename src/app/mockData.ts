@@ -14,7 +14,7 @@ export const featureConfigs: FeatureConfig[] = [
   {
     id: "convert",
     label: "转换",
-    description: "设置输出格式、编码和保存位置，后续阶段接入 FFmpeg 任务。",
+    description: "批量选择同类媒体，设置输出格式、编码和保存位置。",
     icon: Shuffle,
     summary: "容器与编码预设",
   },

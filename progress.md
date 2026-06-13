@@ -431,5 +431,67 @@
 | 我学到了什么？ | 见 findings.md |
 | 我做了什么？ | 见上方阶段 6 记录 |
 
+## 会话：2026-06-13
+
+### 阶段 7：截取音视频片段
+- **状态：** partial complete（本分支只完成截取；截图和音频提取仍 pending）
+- 执行的操作：
+  - 确认当前分支从 `codex/single-file-convert` 切到 `codex/stage7-trim`，工作区开始时干净。
+  - 新增后端 `TrimRequest`、`TrimMediaKind`、`TrimMode`，并复用阶段 6 输出格式矩阵。
+  - 新增 `trim_args` 和 `validate_trim_request`，校验输入路径、输出路径、输出格式、开始/结束时间、已知媒体总时长、同路径输出等。
+  - 快速截取模式使用 `-ss` 在 `-i` 前和 `-c copy`；精确截取模式使用 `-ss` 在 `-i` 后并自动重编码。
+  - `JobKind` 新增 `trim`，`JobManager` 新增 `enqueue_trim_job`，截取任务复用现有队列、进度、取消、日志和 `jobs-event`。
+  - 注册 Tauri command `enqueue_trim_job`。
+  - 前端新增 `TrimRequest` 类型和 `enqueueTrimJob` typed invoke。
+  - 新增 `src/features/trim/TrimPanel.tsx`，实现单文件选择、时间输入、输出目录、输出格式、快速/精确模式、覆盖设置和任务创建。
+  - 顶部“打开文件”在截取页使用单文件选择，在转换页继续保留阶段 6 的批量选择。
+  - 截取页只接受视频/音频；图片和未知媒体类型在 UI 和后端都不可入队。
+  - 更新 `task_plan.md` 和 `findings.md`，阶段 7 标记为 partial in progress，截取完成，截图/音频提取保持 pending。
+- 创建/修改的文件：
+  - `src-tauri/src/commands/jobs.rs`
+  - `src-tauri/src/ffmpeg/command_builder.rs`
+  - `src-tauri/src/jobs/mod.rs`
+  - `src-tauri/src/lib.rs`
+  - `src/app/App.tsx`
+  - `src/app/mockData.ts`
+  - `src/app/types.ts`
+  - `src/components/InspectorPanel.tsx`
+  - `src/features/FeatureWorkspace.tsx`
+  - `src/features/trim/TrimPanel.tsx`
+  - `src/lib/tauri.ts`
+  - `src/styles/global.css`
+  - `task_plan.md`
+  - `findings.md`
+  - `progress.md`
+
+## 阶段 7 截取测试结果
+| 测试 | 输入 | 预期结果 | 实际结果 | 状态 |
+|------|------|---------|---------|------|
+| Rust 格式检查 | `cargo fmt --check` | 无格式变更需求 | 通过 | pass |
+| Rust 单元测试 | `cargo test` | 截取参数顺序、格式分支、路径安全、时间范围和输出路径校验通过 | 43 个测试通过 | pass |
+| sidecar 检查 | `pnpm.cmd run sidecar:check` | 项目内 ffmpeg/ffprobe 可运行且版本匹配 | FFmpeg/FFprobe 均为 `8.0.1-full_build-www.gyan.dev` | pass |
+| 前端构建 | `pnpm.cmd build` | TypeScript 与 Vite 构建通过 | 构建通过 | pass |
+| Tauri release 构建 | `pnpm.cmd run tauri:build` | sidecar 检查、前端构建、Rust release 编译和 MSI/NSIS 打包通过 | 第二次长超时运行通过，生成 MSI 与 NSIS；仍有 `.app` identifier 已知警告 | pass |
+| 截取 smoke | `D:\tl-temp\ffmpeg-gui-stage7-trim-20260613-153816` | 英文、中文、空格路径视频截取和音频截取输出可被 ffprobe 读取 | MP4/MKV/WebM 视频截取输出包含 video+audio；FLAC 音频截取输出包含 audio | pass |
+| Browser/Vite fallback | Browser 打开 `http://127.0.0.1:1421` 并切到“截取” | 普通浏览器环境不崩溃，显示截取页和 Tauri runtime fallback，无 console error/warn | 显示单文件选择、开始/结束时间、快速/精确截取、输出目录和 fallback；console error/warn 为空 | pass |
+| Tauri dev 冒烟 | `pnpm.cmd run tauri:dev` | sidecar 检查、Vite ready、Rust debug 编译并启动 app | 日志显示 `target\debug\ffmpeg-gui.exe` 启动，随后清理本次进程 | pass |
+| 桌面 UI 创建/取消截取任务 | Tauri 窗口导入媒体、创建截取任务、取消任务、复制日志 | 任务队列中确认进度、取消和日志复制 | 本轮未做人工交互点击；任务系统通过既有队列测试、截取任务接入和 dev 启动验证 | not run |
+
+## 阶段 7 截取错误日志
+| 时间戳 | 错误 | 尝试次数 | 解决方案 |
+|--------|------|---------|---------|
+| 2026-06-13 | 首次 `pnpm.cmd run tauri:build` 在 NSIS 打包阶段被工具超时截断，但 makensis 仍在运行 | 1 | 等待 makensis 结束后用更长超时重跑，取得成功退出码 |
+| 2026-06-13 | 截取 smoke 的 Python here-string 中文字面量变为 `????`，导致 Windows 路径非法 | 1 | 改用 Unicode escape 构造中文路径后重跑通过 |
+| 2026-06-13 | 清理 Tauri dev 进程时命令行匹配过宽，把当前检查 shell 也匹配到并提前退出 | 1 | 重新检查端口和进程后按具体 PID 清理，复查 1420/1421 无残留监听 |
+
+## 阶段 7 截取五问重启检查
+| 问题 | 答案 |
+|------|------|
+| 我在哪里？ | 阶段 7 截取音视频片段分支已完成，截图和音频提取仍未开始 |
+| 我要去哪里？ | 后续应继续阶段 7 的视频截图分支或音频提取分支 |
+| 目标是什么？ | 完成基础截取功能：单文件音视频输入、开始/结束时间、快速/精确模式、输出目录自动命名、任务队列接入 |
+| 我学到了什么？ | 见 findings.md |
+| 我做了什么？ | 见上方阶段 7 截取记录 |
+
 ---
 *每个阶段完成后或遇到错误时更新此文件*

@@ -24,6 +24,7 @@ import type {
   JobsRuntimeState,
   MediaProbeState,
   SidecarHealthState,
+  TrimRequest,
 } from "./types";
 import { AppSidebar } from "../components/AppSidebar";
 import { InspectorPanel } from "../components/InspectorPanel";
@@ -33,10 +34,12 @@ import {
   checkFfmpegHealth,
   clearFinishedJobs,
   enqueueConvertJob,
+  enqueueTrimJob,
   getJobQueueConfig,
   listenToJobEvents,
   listJobs,
   probeMedia,
+  selectMediaFile,
   selectMediaFiles,
   setJobQueueConfig,
   toMediaSummary,
@@ -52,6 +55,10 @@ function App() {
   const [mediaProbeState, setMediaProbeState] = useState<MediaProbeState>({
     status: "empty",
   });
+  const [trimMediaProbeState, setTrimMediaProbeState] =
+    useState<MediaProbeState>({
+      status: "empty",
+    });
   const [batchMediaState, setBatchMediaState] = useState<BatchMediaState>({
     status: "empty",
     lifecycle: "collecting",
@@ -257,6 +264,31 @@ function App() {
     }
   }, [batchMediaState.items, batchMediaState.lifecycle]);
 
+  const handleSelectTrimMedia = useCallback(async () => {
+    try {
+      const selectedPath = await selectMediaFile();
+      if (!selectedPath) {
+        return;
+      }
+
+      setTrimMediaProbeState({ status: "loading", path: selectedPath });
+      setJobCommandError(undefined);
+
+      const media = await probeMedia(selectedPath);
+      const summary = toMediaSummary(media);
+      setTrimMediaProbeState({
+        status: "ready",
+        media,
+        summary,
+      });
+    } catch (error) {
+      setTrimMediaProbeState({
+        status: "error",
+        error: error as AppErrorPayload,
+      });
+    }
+  }, []);
+
   const handleEnqueueConvertJobs = useCallback(async (drafts: ConvertJobDraft[]) => {
     const createdJobs: Array<{
       draft: ConvertJobDraft;
@@ -346,6 +378,18 @@ function App() {
       if (createdJobs.length > 0) {
         setActiveFeatureId("jobs");
       }
+    } catch (error) {
+      setJobCommandError(error as AppErrorPayload);
+    }
+  }, []);
+
+  const handleEnqueueTrimJob = useCallback(async (request: TrimRequest) => {
+    try {
+      const job = await enqueueTrimJob(request);
+      setJobs((currentJobs) => upsertJob(currentJobs, job));
+      setJobCommandError(undefined);
+      setInspectorTab("tasks");
+      setActiveFeatureId("jobs");
     } catch (error) {
       setJobCommandError(error as AppErrorPayload);
     }
@@ -475,6 +519,13 @@ function App() {
     return "正在检查项目内 FFmpeg/FFprobe sidecar";
   }, [sidecarHealth]);
 
+  const isHeaderMediaLoading =
+    activeFeatureId === "trim"
+      ? trimMediaProbeState.status === "loading"
+      : mediaProbeState.status === "loading";
+  const handleHeaderSelectMedia =
+    activeFeatureId === "trim" ? handleSelectTrimMedia : handleSelectMedia;
+
   return (
     <main className="app-window">
       <AppSidebar
@@ -496,8 +547,8 @@ function App() {
               className="icon-button"
               type="button"
               aria-label="打开文件"
-              onClick={handleSelectMedia}
-              disabled={mediaProbeState.status === "loading"}
+              onClick={handleHeaderSelectMedia}
+              disabled={isHeaderMediaLoading}
             >
               <FolderOpen size={18} aria-hidden="true" />
             </button>
@@ -557,15 +608,18 @@ function App() {
         <FeatureWorkspace
           activeFeature={activeFeature}
           mediaState={mediaProbeState}
+          trimMediaState={trimMediaProbeState}
           batchMediaState={batchMediaState}
           jobs={jobs}
           jobQueueConfig={jobQueueConfig}
           jobsRuntime={jobsRuntime}
           jobCommandError={jobCommandError}
           onSelectMedia={handleSelectMedia}
+          onSelectTrimMedia={handleSelectTrimMedia}
           onRemoveBatchItem={handleRemoveBatchItem}
           onMoveBatchItem={handleMoveBatchItem}
           onEnqueueConvertJobs={handleEnqueueConvertJobs}
+          onEnqueueTrimJob={handleEnqueueTrimJob}
           onCancelJob={handleCancelJob}
           onClearFinishedJobs={handleClearFinishedJobs}
           onMaxConcurrentChange={handleMaxConcurrentChange}

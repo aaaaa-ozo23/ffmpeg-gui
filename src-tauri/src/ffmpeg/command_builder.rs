@@ -18,6 +18,20 @@ pub struct ConvertRequest {
     pub duration_sec: Option<f64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrimRequest {
+    pub input_path: String,
+    pub output_path: String,
+    pub media_kind: TrimMediaKind,
+    pub output_format: ConvertOutputFormat,
+    pub mode: TrimMode,
+    pub start_sec: f64,
+    pub end_sec: f64,
+    pub overwrite: bool,
+    pub source_duration_sec: Option<f64>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ConvertMediaKind {
@@ -28,10 +42,24 @@ pub enum ConvertMediaKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
+pub enum TrimMediaKind {
+    Video,
+    Audio,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ConvertMode {
     Auto,
     Copy,
     Custom,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TrimMode {
+    Copy,
+    Accurate,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -187,9 +215,24 @@ pub fn convert_args(request: &ConvertRequest) -> Result<Vec<String>, AppError> {
     Ok(args.into_vec())
 }
 
+pub fn trim_args(request: &TrimRequest) -> Result<Vec<String>, AppError> {
+    validate_trim_request(request)?;
+
+    let args = match request.mode {
+        TrimMode::Copy => trim_copy_args(request),
+        TrimMode::Accurate => trim_accurate_args(request),
+    };
+
+    Ok(args.into_vec())
+}
+
 pub fn validate_convert_request(request: &ConvertRequest) -> Result<(), AppError> {
     validate_media_path(&request.input_path)?;
-    validate_output_path(request)?;
+    validate_output_path(
+        &request.input_path,
+        &request.output_path,
+        request.output_format.extension(),
+    )?;
 
     if request.output_format.media_kind() != request.media_kind {
         return Err(AppError::invalid_input(format!(
@@ -207,14 +250,57 @@ pub fn validate_convert_request(request: &ConvertRequest) -> Result<(), AppError
     Ok(())
 }
 
-fn validate_output_path(request: &ConvertRequest) -> Result<(), AppError> {
-    let output_path = request.output_path.trim();
+pub fn validate_trim_request(request: &TrimRequest) -> Result<(), AppError> {
+    validate_media_path(&request.input_path)?;
+    validate_output_path(
+        &request.input_path,
+        &request.output_path,
+        request.output_format.extension(),
+    )?;
+
+    if trim_output_media_kind(request.output_format) != Some(request.media_kind) {
+        return Err(AppError::invalid_input(format!(
+            "输出格式 .{} 与当前截取媒体类型不匹配。",
+            request.output_format.extension()
+        )));
+    }
+
+    if !request.start_sec.is_finite() || !request.end_sec.is_finite() {
+        return Err(AppError::invalid_input("截取时间必须是有效数字。"));
+    }
+
+    if request.start_sec < 0.0 {
+        return Err(AppError::invalid_input("开始时间不能小于 0。"));
+    }
+
+    if request.end_sec <= request.start_sec {
+        return Err(AppError::invalid_input("结束时间必须大于开始时间。"));
+    }
+
+    if let Some(source_duration_sec) = request.source_duration_sec {
+        if !source_duration_sec.is_finite() || source_duration_sec <= 0.0 {
+            return Err(AppError::invalid_input("媒体时长无效，无法创建截取任务。"));
+        }
+
+        if request.end_sec > source_duration_sec + 0.001 {
+            return Err(AppError::invalid_input("结束时间不能超过媒体总时长。"));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_output_path(
+    input_path: &str,
+    output_path: &str,
+    expected_extension: &str,
+) -> Result<(), AppError> {
+    let output_path = output_path.trim();
     if output_path.is_empty() {
         return Err(AppError::invalid_input("请选择输出路径。"));
     }
 
     let output = Path::new(output_path);
-    let expected_extension = request.output_format.extension();
     let actual_extension = output
         .extension()
         .and_then(|extension| extension.to_str())
@@ -226,7 +312,7 @@ fn validate_output_path(request: &ConvertRequest) -> Result<(), AppError> {
         )));
     }
 
-    if same_path(&request.input_path, output_path) {
+    if same_path(input_path, output_path) {
         return Err(AppError::invalid_input("输出路径不能与输入文件相同。"));
     }
 
@@ -332,6 +418,75 @@ fn image_convert_args(request: &ConvertRequest) -> CommandArgs {
         .arg(&request.output_path)
 }
 
+fn trim_copy_args(request: &TrimRequest) -> CommandArgs {
+    let builder = CommandArgs::new()
+        .args(["-hide_banner", "-nostdin"])
+        .arg(if request.overwrite { "-y" } else { "-n" })
+        .arg("-ss")
+        .arg(format_seconds(request.start_sec))
+        .input_path(&request.input_path)
+        .arg("-t")
+        .arg(format_seconds(trim_duration_sec(request)));
+
+    trim_stream_map_args(builder, request.media_kind)
+        .args(["-c", "copy", "-progress", "pipe:1", "-nostats"])
+        .arg(&request.output_path)
+}
+
+fn trim_accurate_args(request: &TrimRequest) -> CommandArgs {
+    let builder = CommandArgs::new()
+        .args(["-hide_banner", "-nostdin"])
+        .arg(if request.overwrite { "-y" } else { "-n" })
+        .input_path(&request.input_path)
+        .arg("-ss")
+        .arg(format_seconds(request.start_sec))
+        .arg("-t")
+        .arg(format_seconds(trim_duration_sec(request)));
+
+    let builder = match request.media_kind {
+        TrimMediaKind::Video => {
+            let builder = trim_stream_map_args(builder, request.media_kind);
+            video_auto_codec_args(builder, request.output_format)
+        }
+        TrimMediaKind::Audio => {
+            let builder = trim_stream_map_args(builder, request.media_kind);
+            audio_auto_codec_args(builder, request.output_format)
+        }
+    };
+
+    add_faststart_for_format(builder, request.output_format, false)
+        .args(["-progress", "pipe:1", "-nostats"])
+        .arg(&request.output_path)
+}
+
+fn trim_stream_map_args(builder: CommandArgs, media_kind: TrimMediaKind) -> CommandArgs {
+    match media_kind {
+        TrimMediaKind::Video => builder.args(["-map", "0:v:0", "-map", "0:a?", "-sn"]),
+        TrimMediaKind::Audio => builder.args(["-vn", "-map", "0:a:0"]),
+    }
+}
+
+fn trim_duration_sec(request: &TrimRequest) -> f64 {
+    request.end_sec - request.start_sec
+}
+
+fn trim_output_media_kind(output_format: ConvertOutputFormat) -> Option<TrimMediaKind> {
+    match output_format {
+        ConvertOutputFormat::Mp4
+        | ConvertOutputFormat::Mkv
+        | ConvertOutputFormat::Mov
+        | ConvertOutputFormat::Webm => Some(TrimMediaKind::Video),
+        ConvertOutputFormat::Mp3
+        | ConvertOutputFormat::Wav
+        | ConvertOutputFormat::Flac
+        | ConvertOutputFormat::Aac
+        | ConvertOutputFormat::M4a
+        | ConvertOutputFormat::Ogg
+        | ConvertOutputFormat::Opus => Some(TrimMediaKind::Audio),
+        _ => None,
+    }
+}
+
 fn video_auto_codec_args(builder: CommandArgs, output_format: ConvertOutputFormat) -> CommandArgs {
     match output_format {
         ConvertOutputFormat::Webm => builder.args([
@@ -404,9 +559,21 @@ fn image_auto_codec_args(builder: CommandArgs, output_format: ConvertOutputForma
 }
 
 fn add_faststart_if_needed(builder: CommandArgs, request: &ConvertRequest) -> CommandArgs {
-    if request.mode != ConvertMode::Copy
+    add_faststart_for_format(
+        builder,
+        request.output_format,
+        request.mode == ConvertMode::Copy,
+    )
+}
+
+fn add_faststart_for_format(
+    builder: CommandArgs,
+    output_format: ConvertOutputFormat,
+    is_copy_mode: bool,
+) -> CommandArgs {
+    if !is_copy_mode
         && matches!(
-            request.output_format,
+            output_format,
             ConvertOutputFormat::Mp4 | ConvertOutputFormat::Mov
         )
     {
@@ -414,6 +581,10 @@ fn add_faststart_if_needed(builder: CommandArgs, request: &ConvertRequest) -> Co
     } else {
         builder
     }
+}
+
+fn format_seconds(seconds: f64) -> String {
+    format!("{seconds:.3}")
 }
 
 #[cfg(test)]
@@ -595,6 +766,148 @@ mod tests {
         assert!(args.iter().any(|arg| arg == &request.output_path));
     }
 
+    #[test]
+    fn builds_video_copy_trim_args_with_seek_before_input() {
+        let request = sample_trim_request(
+            TrimMediaKind::Video,
+            ConvertOutputFormat::Mkv,
+            TrimMode::Copy,
+            "mkv",
+        );
+
+        let args = trim_args(&request).expect("video copy trim args should build");
+
+        assert!(contains_pair(&args, "-ss", "1.250"));
+        assert!(contains_pair(&args, "-t", "3.250"));
+        assert!(contains_pair(&args, "-c", "copy"));
+        assert!(contains_pair(&args, "-progress", "pipe:1"));
+        assert!(index_of(&args, "-ss") < index_of(&args, "-i"));
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some(request.output_path.as_str())
+        );
+    }
+
+    #[test]
+    fn builds_video_accurate_trim_args_with_seek_after_input() {
+        let request = sample_trim_request(
+            TrimMediaKind::Video,
+            ConvertOutputFormat::Mp4,
+            TrimMode::Accurate,
+            "mp4",
+        );
+
+        let args = trim_args(&request).expect("video accurate trim args should build");
+
+        assert!(contains_pair(&args, "-c:v", "libx264"));
+        assert!(contains_pair(&args, "-c:a", "aac"));
+        assert!(contains_pair(&args, "-movflags", "+faststart"));
+        assert!(index_of(&args, "-i") < index_of(&args, "-ss"));
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some(request.output_path.as_str())
+        );
+    }
+
+    #[test]
+    fn builds_audio_accurate_trim_args() {
+        let request = sample_trim_request(
+            TrimMediaKind::Audio,
+            ConvertOutputFormat::Flac,
+            TrimMode::Accurate,
+            "flac",
+        );
+
+        let args = trim_args(&request).expect("audio trim args should build");
+
+        assert!(args.contains(&"-vn".to_string()));
+        assert!(contains_pair(&args, "-map", "0:a:0"));
+        assert!(contains_pair(&args, "-c:a", "flac"));
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some(request.output_path.as_str())
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_trim_ranges() {
+        let mut request = sample_trim_request(
+            TrimMediaKind::Video,
+            ConvertOutputFormat::Mp4,
+            TrimMode::Copy,
+            "mp4",
+        );
+
+        request.end_sec = request.start_sec;
+        assert!(trim_args(&request).is_err());
+
+        request.end_sec = 4.5;
+        request.start_sec = -1.0;
+        assert!(trim_args(&request).is_err());
+
+        request.start_sec = 1.0;
+        request.end_sec = 99.0;
+        assert!(trim_args(&request).is_err());
+    }
+
+    #[test]
+    fn rejects_trim_output_format_mismatches() {
+        let request = TrimRequest {
+            output_format: ConvertOutputFormat::Mp3,
+            output_path: temp_output_path("trim-cross-kind", "trimmed.mp3"),
+            ..sample_trim_request(
+                TrimMediaKind::Video,
+                ConvertOutputFormat::Mp4,
+                TrimMode::Copy,
+                "mp4",
+            )
+        };
+
+        assert!(trim_args(&request).is_err());
+    }
+
+    #[test]
+    fn rejects_trim_output_extension_mismatch() {
+        let request = TrimRequest {
+            output_path: temp_output_path("trim-extension", "trimmed.mkv"),
+            ..sample_trim_request(
+                TrimMediaKind::Video,
+                ConvertOutputFormat::Mp4,
+                TrimMode::Copy,
+                "mp4",
+            )
+        };
+
+        assert!(trim_args(&request).is_err());
+    }
+
+    #[test]
+    fn rejects_same_trim_input_and_output_path() {
+        let mut request = sample_trim_request(
+            TrimMediaKind::Audio,
+            ConvertOutputFormat::Mp3,
+            TrimMode::Copy,
+            "mp3",
+        );
+        request.output_path = request.input_path.clone();
+
+        assert!(trim_args(&request).is_err());
+    }
+
+    #[test]
+    fn keeps_trim_paths_as_single_args() {
+        let request = sample_trim_request(
+            TrimMediaKind::Audio,
+            ConvertOutputFormat::Aac,
+            TrimMode::Copy,
+            "aac",
+        );
+        let args = trim_args(&request).expect("path-safe trim args should build");
+
+        assert!(args.iter().any(|arg| arg == &request.input_path));
+        assert!(args.iter().any(|arg| arg == &request.output_path));
+    }
+
     fn sample_request(
         media_kind: ConvertMediaKind,
         output_format: ConvertOutputFormat,
@@ -611,6 +924,28 @@ mod tests {
             audio_codec: ConvertAudioCodec::Aac,
             overwrite: false,
             duration_sec: Some(1.5),
+        }
+    }
+
+    fn sample_trim_request(
+        media_kind: TrimMediaKind,
+        output_format: ConvertOutputFormat,
+        mode: TrimMode,
+        extension: &str,
+    ) -> TrimRequest {
+        TrimRequest {
+            input_path: temp_input_path("trim-input", "sample demo 中文 space.mp4"),
+            output_path: temp_output_path(
+                "trim-output",
+                &format!("trimmed sample 中文 space.{extension}"),
+            ),
+            media_kind,
+            output_format,
+            mode,
+            start_sec: 1.25,
+            end_sec: 4.5,
+            overwrite: false,
+            source_duration_sec: Some(10.0),
         }
     }
 
@@ -648,5 +983,11 @@ mod tests {
     fn contains_pair(args: &[String], key: &str, value: &str) -> bool {
         args.windows(2)
             .any(|pair| pair[0].as_str() == key && pair[1].as_str() == value)
+    }
+
+    fn index_of(args: &[String], key: &str) -> usize {
+        args.iter()
+            .position(|arg| arg == key)
+            .expect("argument should exist")
     }
 }
