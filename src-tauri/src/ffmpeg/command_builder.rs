@@ -735,10 +735,6 @@ fn add_faststart_for_format(
     }
 }
 
-fn format_seconds(seconds: f64) -> String {
-    format!("{seconds:.3}")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

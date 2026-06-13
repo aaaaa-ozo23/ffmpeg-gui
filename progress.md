@@ -565,5 +565,56 @@
 | Browser fallback | `http://127.0.0.1:1421` | 普通 Vite 下音频页渲染正常，显示 Tauri runtime fallback，console 无 error/warn | 音频页文案、MP3/AAC/WAV/FLAC 和 fallback 均存在；warn/error 0 | pass |
 | Tauri dev smoke | `pnpm.cmd run tauri:dev` | sidecar 检查、Vite 和 Rust debug app 启动正常 | debug app 启动成功；手动停止后返回预期 `0xffffffff` | pass |
 
+### 阶段 7：全量统一验证
+- **状态：** complete
+- 执行的操作：
+  - 在 `codex/stage7-full` 上完成 `codex/stage7-trim`、`codex/stage7-screenshot`、`codex/stage7-audio-extract` 三个独立分支合并。
+  - 解决共享文件冲突：后端 request/args/job/command 注册、前端 App/FeatureWorkspace/typed invoke、三套单文件面板状态、规划文件。
+  - 删除合并后重复的 `format_seconds` helper，保留一个共享实现。
+  - 使用统一临时素材目录 `D:\tl-temp\ffmpeg-gui-stage7-full-20260613-200614` 验证截取、截图和音频提取。
+- 创建/修改的文件：
+  - `src-tauri/src/commands/jobs.rs`
+  - `src-tauri/src/ffmpeg/command_builder.rs`
+  - `src-tauri/src/jobs/mod.rs`
+  - `src-tauri/src/lib.rs`
+  - `src/app/App.tsx`
+  - `src/app/types.ts`
+  - `src/features/FeatureWorkspace.tsx`
+  - `src/features/audio/AudioExtractPanel.tsx`
+  - `src/features/screenshot/ScreenshotPanel.tsx`
+  - `src/features/trim/TrimPanel.tsx`
+  - `src/lib/tauri.ts`
+  - `task_plan.md`
+  - `findings.md`
+  - `progress.md`
+
+## 阶段 7 全量统一验证结果
+| 测试 | 输入 | 预期结果 | 实际结果 | 状态 |
+|------|------|---------|---------|------|
+| Rust 格式检查 | `cargo fmt --check` | Rust 文件格式符合 rustfmt | 通过 | pass |
+| Rust 单元测试 | `cargo test` | 转换、截取、截图、音频提取、任务系统回归测试通过 | 59 个测试通过 | pass |
+| Sidecar 检查 | `pnpm.cmd run sidecar:check` | 项目内 FFmpeg/FFprobe sidecar 可用 | FFmpeg/FFprobe 8.0.1 检查通过 | pass |
+| 前端构建 | `pnpm.cmd build` | TypeScript 与 Vite production build 通过 | 通过 | pass |
+| Tauri release 构建 | `pnpm.cmd run tauri:build` | Windows release build 和安装包生成成功 | 通过，生成 MSI 和 NSIS 安装包；保留既有 bundle identifier warning | pass |
+| 统一 FFmpeg smoke：截取 | 英文视频、中文视频、空格路径音频 | 快速截取、精确截取和音频截取输出可被 ffprobe 读取 | MKV/MP4 输出含 video+audio，FLAC 输出含 audio | pass |
+| 统一 FFmpeg smoke：截图 | 中文路径视频、空格路径视频 | PNG/JPG 截图输出可被 ffprobe 读取 | PNG=`png`，JPG=`mjpeg`，尺寸 `320x180` | pass |
+| 统一 FFmpeg smoke：音频提取 | 英文/中文/空格路径视频 | MP3/AAC/WAV/FLAC 输出可被 ffprobe 读取 | codecs 为 `mp3`、`aac`、`pcm_s16le`、`flac` | pass |
+| Browser fallback | `http://127.0.0.1:1421` | 截取、截图、音频页渲染正常，显示 Tauri runtime fallback，console 无 error/warn | 三个页面核心文案和 fallback 均存在；warn/error 0 | pass |
+| Tauri dev smoke | `pnpm.cmd run tauri:dev` | sidecar 检查、Vite 和 Rust debug app 启动正常 | debug app 启动成功；手动停止后返回预期 `0xffffffff` | pass |
+
+## 阶段 7 集成错误日志
+| 时间戳 | 错误 | 尝试次数 | 解决方案 |
+|--------|------|---------|---------|
+| 2026-06-13 | `cargo test` 首次失败：`format_seconds` 在合并后重复定义 | 1 | 删除后面的重复 helper，保留共享实现后复验 `cargo fmt --check` 和 59 个测试通过 |
+
+## 阶段 7 五问重启检查
+| 问题 | 答案 |
+|------|------|
+| 我在哪里？ | 阶段 7 三个基础处理功能已合并到 `codex/stage7-full` 并完成统一验证 |
+| 我要去哪里？ | 后续可进入阶段 8：字幕与倍速导出，或先提交/推送集成分支 |
+| 目标是什么？ | 完成截取、截图、音频提取三个基础功能，并确认它们在同一分支共存、构建、打包和 smoke 均通过 |
+| 我学到了什么？ | 见 findings.md |
+| 我做了什么？ | 见上方阶段 7 全量统一验证记录 |
+
 ---
 *每个阶段完成后或遇到错误时更新此文件*

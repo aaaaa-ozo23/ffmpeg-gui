@@ -123,6 +123,10 @@
 - 普通 Vite fallback 下音频页可正常渲染，显示 Tauri runtime fallback，控制台 warn/error 为 0。
 - `pnpm.cmd run tauri:dev` 可完成 sidecar 检查、Vite 启动和 Rust debug app 启动；主动停止 debug app 时返回 `0xffffffff`，作为 smoke 清理导致的预期退出码记录。
 - 阶段 7 集成分支 `codex/stage7-full` 已从阶段 6 基线合并 `codex/stage7-trim`、`codex/stage7-screenshot` 和 `codex/stage7-audio-extract`，三个基础处理功能当前在同一分支共存。
+- 阶段 7 统一验证 smoke 位于 `D:\tl-temp\ffmpeg-gui-stage7-full-20260613-200614`，同一套素材覆盖截取、截图和音频提取，并验证英文路径、中文路径、空格路径输出均可被 ffprobe 读取。
+- 阶段 7 集成后的 Rust 单元测试数量为 59 个，覆盖转换、截取、截图、音频提取、媒体探测、进度和任务队列。
+- 阶段 7 集成后的普通 Vite fallback 已用 in-app Browser 依次验证“截取”“截图”“音频”页面，三个页面都显示 Tauri runtime fallback 且 console warn/error 为 0。
+- 阶段 7 集成后的 Tauri dev smoke 可完成 sidecar 检查、Vite 1420 启动和 Rust debug app 启动；主动停止 debug app 时仍返回预期 `0xffffffff`。
 
 ## 技术决策
 | 决策 | 理由 |
@@ -203,6 +207,7 @@
 | 首次 Vite fallback 检查把 `pnpm.cmd dev -- --host ...` 传成了 Vite 位置参数并导致等待端口超时 | 改用 `pnpm.cmd exec vite --host 127.0.0.1 --port 1421 --strictPort`，再用 Edge headless 验证 DOM |
 | 阶段 6 smoke 中 PowerShell 仍将 FFmpeg 正常 stderr 包装为 NativeCommandError | 改用 Python `subprocess.run([...])` 参数数组启动 sidecar，避免 shell/stderr 包装 |
 | 阶段 7 音频提取 Tauri dev smoke 主动停止 debug app 后返回 `0xffffffff` | debug app 已成功启动，退出码来自 smoke 清理时强制停止进程，不作为启动失败处理 |
+| 阶段 7 集成后 `cargo test` 首次发现 `format_seconds` 被截取/截图合并路径重复定义 | 删除后面的重复 helper，保留一个共享 `format_seconds` 后 `cargo fmt --check` 和 59 个 Rust 测试通过 |
 | Python inline 脚本中的中文字面量经 PowerShell here-string 变为 `?` | 改用 Unicode escape 构造中文路径后验证通过 |
 | 阶段 6 首次 `tauri:build` 被工具超时截断但 makensis 仍在运行 | 等待 makensis 结束，再用更长超时重跑并取得成功退出码 |
 | Browser 快照发现右侧 inspector 仍有 Null 输出文案 | 更新为格式转换任务提示并复验旧文案消失 |
@@ -222,6 +227,7 @@
 - 阶段 4 已完成，第一个文件选择 -> ffprobe -> UI 展示闭环已落地；下一阶段应进入任务系统、进度、取消与日志。
 - 阶段 5 已完成，任务系统、进度、取消、日志、事件同步和 Null 输出验证任务已落地；下一阶段应进入单文件格式转换。
 - 阶段 6 已完成，真实格式转换任务已接入任务系统，并补强为同类多文件批量转换；下一阶段应进入截取、截图、音频提取。
+- 阶段 7 已完成，截取、截图、音频提取三个独立分支已合并到 `codex/stage7-full` 并完成统一验证。
 - 阶段 7 已完成截取片段功能的首个分支；截图和音频提取仍保持 pending，应作为后续阶段 7 分支继续实施。
 
 ## 资源
