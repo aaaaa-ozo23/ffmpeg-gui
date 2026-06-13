@@ -1,5 +1,6 @@
 import type {
   AppErrorPayload,
+  AudioExtractRequest,
   BatchMoveDirection,
   BatchMediaState,
   ConvertJobDraft,
@@ -11,6 +12,7 @@ import type {
   ScreenshotRequest,
   TrimRequest,
 } from "../app/types";
+import { AudioExtractPanel } from "./audio/AudioExtractPanel";
 import { ConvertPanel } from "./convert/ConvertPanel";
 import { FeaturePlaceholder } from "./FeaturePlaceholder";
 import { JobsPanel } from "./jobs/JobsPanel";
@@ -23,6 +25,7 @@ type FeatureWorkspaceProps = {
   trimMediaState: MediaProbeState;
   batchMediaState: BatchMediaState;
   screenshotMediaState: MediaProbeState;
+  audioMediaState: MediaProbeState;
   jobs: JobRecord[];
   jobQueueConfig: JobQueueConfig;
   jobsRuntime: JobsRuntimeState;
@@ -30,11 +33,13 @@ type FeatureWorkspaceProps = {
   onSelectMedia: () => void;
   onSelectTrimMedia: () => void;
   onSelectScreenshotMedia: () => void;
+  onSelectAudioMedia: () => void;
   onRemoveBatchItem: (itemId: string) => void;
   onMoveBatchItem: (itemId: string, direction: BatchMoveDirection) => void;
   onEnqueueConvertJobs: (drafts: ConvertJobDraft[]) => Promise<void>;
   onEnqueueTrimJob: (request: TrimRequest) => Promise<void>;
   onEnqueueScreenshotJob: (request: ScreenshotRequest) => Promise<void>;
+  onEnqueueAudioExtractJob: (request: AudioExtractRequest) => Promise<void>;
   onCancelJob: (jobId: string) => void;
   onClearFinishedJobs: () => void;
   onMaxConcurrentChange: (value: number) => void;
@@ -48,6 +53,7 @@ export function FeatureWorkspace({
   trimMediaState,
   batchMediaState,
   screenshotMediaState,
+  audioMediaState,
   jobs,
   jobQueueConfig,
   jobsRuntime,
@@ -55,11 +61,13 @@ export function FeatureWorkspace({
   onSelectMedia,
   onSelectTrimMedia,
   onSelectScreenshotMedia,
+  onSelectAudioMedia,
   onRemoveBatchItem,
   onMoveBatchItem,
   onEnqueueConvertJobs,
   onEnqueueTrimJob,
   onEnqueueScreenshotJob,
+  onEnqueueAudioExtractJob,
   onCancelJob,
   onClearFinishedJobs,
   onMaxConcurrentChange,
@@ -117,6 +125,18 @@ export function FeatureWorkspace({
         commandError={jobCommandError}
         onSelectMedia={onSelectScreenshotMedia}
         onEnqueueScreenshotJob={onEnqueueScreenshotJob}
+      />
+    );
+  }
+
+  if (activeFeature.id === "audio") {
+    return (
+      <AudioExtractPanel
+        mediaState={audioMediaState}
+        jobsRuntime={jobsRuntime}
+        commandError={jobCommandError}
+        onSelectMedia={onSelectAudioMedia}
+        onEnqueueAudioExtractJob={onEnqueueAudioExtractJob}
       />
     );
   }

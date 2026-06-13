@@ -11,6 +11,7 @@ import {
 import { featureConfigs } from "./mockData";
 import type {
   AppErrorPayload,
+  AudioExtractRequest,
   BatchMoveDirection,
   BatchMediaItem,
   BatchMediaState,
@@ -34,6 +35,7 @@ import {
   cancelJob,
   checkFfmpegHealth,
   clearFinishedJobs,
+  enqueueAudioExtractJob,
   enqueueConvertJob,
   enqueueScreenshotJob,
   enqueueTrimJob,
@@ -67,6 +69,10 @@ function App() {
     items: [],
   });
   const [screenshotMediaProbeState, setScreenshotMediaProbeState] =
+    useState<MediaProbeState>({
+      status: "empty",
+    });
+  const [audioMediaProbeState, setAudioMediaProbeState] =
     useState<MediaProbeState>({
       status: "empty",
     });
@@ -325,6 +331,36 @@ function App() {
     }
   }, []);
 
+  const handleSelectAudioMedia = useCallback(async () => {
+    let selectedPath: string | null = null;
+
+    try {
+      selectedPath = await selectMediaFile();
+      if (!selectedPath) {
+        return;
+      }
+
+      setAudioMediaProbeState({
+        status: "loading",
+        path: selectedPath,
+      });
+      setJobCommandError(undefined);
+
+      const media = await probeMedia(selectedPath);
+      setAudioMediaProbeState({
+        status: "ready",
+        media,
+        summary: toMediaSummary(media),
+      });
+    } catch (error) {
+      setAudioMediaProbeState({
+        status: "error",
+        path: selectedPath ?? undefined,
+        error: error as AppErrorPayload,
+      });
+    }
+  }, []);
+
   const handleEnqueueConvertJobs = useCallback(async (drafts: ConvertJobDraft[]) => {
     const createdJobs: Array<{
       draft: ConvertJobDraft;
@@ -435,6 +471,21 @@ function App() {
     async (request: ScreenshotRequest) => {
       try {
         const job = await enqueueScreenshotJob(request);
+        setJobs((currentJobs) => upsertJob(currentJobs, job));
+        setJobCommandError(undefined);
+        setInspectorTab("tasks");
+        setActiveFeatureId("jobs");
+      } catch (error) {
+        setJobCommandError(error as AppErrorPayload);
+      }
+    },
+    [],
+  );
+
+  const handleEnqueueAudioExtractJob = useCallback(
+    async (request: AudioExtractRequest) => {
+      try {
+        const job = await enqueueAudioExtractJob(request);
         setJobs((currentJobs) => upsertJob(currentJobs, job));
         setJobCommandError(undefined);
         setInspectorTab("tasks");
@@ -575,13 +626,17 @@ function App() {
       ? trimMediaProbeState.status === "loading"
       : activeFeatureId === "screenshot"
         ? screenshotMediaProbeState.status === "loading"
-      : mediaProbeState.status === "loading";
+        : activeFeatureId === "audio"
+          ? audioMediaProbeState.status === "loading"
+          : mediaProbeState.status === "loading";
   const handleHeaderSelectMedia =
     activeFeatureId === "trim"
       ? handleSelectTrimMedia
       : activeFeatureId === "screenshot"
         ? handleSelectScreenshotMedia
-        : handleSelectMedia;
+        : activeFeatureId === "audio"
+          ? handleSelectAudioMedia
+          : handleSelectMedia;
 
   return (
     <main className="app-window">
@@ -668,6 +723,7 @@ function App() {
           trimMediaState={trimMediaProbeState}
           batchMediaState={batchMediaState}
           screenshotMediaState={screenshotMediaProbeState}
+          audioMediaState={audioMediaProbeState}
           jobs={jobs}
           jobQueueConfig={jobQueueConfig}
           jobsRuntime={jobsRuntime}
@@ -675,11 +731,13 @@ function App() {
           onSelectMedia={handleSelectMedia}
           onSelectTrimMedia={handleSelectTrimMedia}
           onSelectScreenshotMedia={handleSelectScreenshotMedia}
+          onSelectAudioMedia={handleSelectAudioMedia}
           onRemoveBatchItem={handleRemoveBatchItem}
           onMoveBatchItem={handleMoveBatchItem}
           onEnqueueConvertJobs={handleEnqueueConvertJobs}
           onEnqueueTrimJob={handleEnqueueTrimJob}
           onEnqueueScreenshotJob={handleEnqueueScreenshotJob}
+          onEnqueueAudioExtractJob={handleEnqueueAudioExtractJob}
           onCancelJob={handleCancelJob}
           onClearFinishedJobs={handleClearFinishedJobs}
           onMaxConcurrentChange={handleMaxConcurrentChange}

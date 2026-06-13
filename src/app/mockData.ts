@@ -35,7 +35,7 @@ export const featureConfigs: FeatureConfig[] = [
   {
     id: "audio",
     label: "音频",
-    description: "从视频提取音频，或在常用音频格式之间转换。",
+    description: "选择单个视频，提取第一路音频为 MP3、AAC、WAV 或 FLAC。",
     icon: Music,
     summary: "音频提取",
   },

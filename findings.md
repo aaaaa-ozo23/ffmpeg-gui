@@ -110,7 +110,19 @@
 - 截图时间输入支持 `SS`、`MM:SS`、`HH:MM:SS` 和小数秒，前端转换为秒后提交给后端。
 - 截图输出策略为“输出目录 + 自动命名”，文件名为 `<原文件名>-screenshot-<安全时间戳>.<png|jpg>`。
 - 阶段 7 截图 smoke 位于 `D:\tl-temp\ffmpeg-gui-stage7-screenshot-20260613-162756`，已验证英文、中文、空格路径视频可导出 PNG/JPG 截图并由 ffprobe 读取。
-- 阶段 7 集成分支 `codex/stage7-full` 已从阶段 6 基线开始合并独立功能分支，当前已合入截取和视频截图。
+- 阶段 7 音频提取分支 `codex/stage7-audio-extract` 基于 `origin/codex/single-file-convert` 创建，未叠加 `codex/stage7-trim` 或 `codex/stage7-screenshot`。
+- 阶段 7 截取片段功能已在 `codex/stage7-trim` 独立分支完成，视频截图功能已在 `codex/stage7-screenshot` 独立分支完成；当前音频分支只实现音频提取。
+- 音频提取后端新增 `AudioExtractRequest` 和 `AudioExtractOutputFormat`，字段为 `inputPath`、`outputPath`、`outputFormat`、`overwrite`、`durationSec?`、`sourceAudioStreamCount?`。
+- `JobKind` 新增 `audioExtract`，`JobManager` 新增 `enqueue_audio_extract_job`，音频提取任务复用现有 `jobs-event`、队列调度、进度、取消、日志和完成状态。
+- 音频提取 FFmpeg 参数为 `-i <input> -map 0:a:0 -vn -sn`，MP3 使用 `libmp3lame -q:a 2`，AAC 使用 `aac -b:a 192k`，WAV 使用 `pcm_s16le`，FLAC 使用 `flac`。
+- 音频提取输出路径继续由 Rust 后端校验：父目录存在、输出扩展名匹配、输出路径不能是目录、输出不能等于输入。
+- 音频提取前端新增 `src/features/audio/AudioExtractPanel.tsx`，使用独立单文件选择状态，不污染阶段 6 转换页批量状态。
+- 音频提取页只允许视频媒体；音频、图片和未知媒体会提示不可提取。视频没有音频流时禁止创建任务。
+- 音频提取输出策略为“输出目录 + 自动命名”，文件名为 `<原文件名>-audio.<mp3|aac|wav|flac>`。
+- 音频提取 smoke 样例目录为 `D:\tl-temp\ffmpeg-gui-stage7-audio-extract-20260613-191401`，已覆盖英文路径、中文路径、空格路径、MP3/AAC/WAV/FLAC 输出和无音频流视频 fixture。
+- 普通 Vite fallback 下音频页可正常渲染，显示 Tauri runtime fallback，控制台 warn/error 为 0。
+- `pnpm.cmd run tauri:dev` 可完成 sidecar 检查、Vite 启动和 Rust debug app 启动；主动停止 debug app 时返回 `0xffffffff`，作为 smoke 清理导致的预期退出码记录。
+- 阶段 7 集成分支 `codex/stage7-full` 已从阶段 6 基线合并 `codex/stage7-trim`、`codex/stage7-screenshot` 和 `codex/stage7-audio-extract`，三个基础处理功能当前在同一分支共存。
 
 ## 技术决策
 | 决策 | 理由 |
@@ -164,6 +176,9 @@
 | 截图分支只支持单文件视频截图 | 符合阶段 7 v1 范围，批量截图留到阶段 9 批量队列能力 |
 | 截图只开放 PNG/JPG | 先覆盖最常见的图片输出，避免 WebP/BMP/TIFF 等格式把截图页扩展成第二个图片转换页 |
 | 截图页使用独立单文件选择状态 | 阶段 6 转换页已是批量选择，截图页不应复用并污染批量转换列表 |
+| 音频提取分支只支持单文件视频输入 | 符合阶段 7 v1 范围，批量提取留到阶段 9 批量队列能力 |
+| 音频提取只开放 MP3/AAC/WAV/FLAC | 覆盖首版要求，避免把提取页扩展成第二个音频转换页 |
+| 音频提取页使用独立单文件选择状态 | 阶段 6 转换页已是批量选择，音频提取页不应复用并污染批量转换列表 |
 
 ## 遇到的问题
 | 问题 | 解决方案 |
@@ -187,6 +202,7 @@
 | 生成阶段 5 临时 MP4 时 PowerShell 再次将 FFmpeg stderr 包装为 NativeCommandError | 将命令包装为显式退出码判断，并用直接 Null 输出 smoke 验证进度行和退出码 |
 | 首次 Vite fallback 检查把 `pnpm.cmd dev -- --host ...` 传成了 Vite 位置参数并导致等待端口超时 | 改用 `pnpm.cmd exec vite --host 127.0.0.1 --port 1421 --strictPort`，再用 Edge headless 验证 DOM |
 | 阶段 6 smoke 中 PowerShell 仍将 FFmpeg 正常 stderr 包装为 NativeCommandError | 改用 Python `subprocess.run([...])` 参数数组启动 sidecar，避免 shell/stderr 包装 |
+| 阶段 7 音频提取 Tauri dev smoke 主动停止 debug app 后返回 `0xffffffff` | debug app 已成功启动，退出码来自 smoke 清理时强制停止进程，不作为启动失败处理 |
 | Python inline 脚本中的中文字面量经 PowerShell here-string 变为 `?` | 改用 Unicode escape 构造中文路径后验证通过 |
 | 阶段 6 首次 `tauri:build` 被工具超时截断但 makensis 仍在运行 | 等待 makensis 结束，再用更长超时重跑并取得成功退出码 |
 | Browser 快照发现右侧 inspector 仍有 Null 输出文案 | 更新为格式转换任务提示并复验旧文案消失 |

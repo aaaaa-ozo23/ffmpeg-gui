@@ -43,6 +43,17 @@ pub struct ScreenshotRequest {
     pub source_duration_sec: Option<f64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioExtractRequest {
+    pub input_path: String,
+    pub output_path: String,
+    pub output_format: AudioExtractOutputFormat,
+    pub overwrite: bool,
+    pub duration_sec: Option<f64>,
+    pub source_audio_stream_count: Option<u32>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ConvertMediaKind {
@@ -122,6 +133,15 @@ pub enum ScreenshotOutputFormat {
     Jpg,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AudioExtractOutputFormat {
+    Mp3,
+    Aac,
+    Wav,
+    Flac,
+}
+
 impl ConvertOutputFormat {
     pub fn extension(self) -> &'static str {
         match self {
@@ -160,6 +180,17 @@ impl ScreenshotOutputFormat {
         match self {
             Self::Png => "png",
             Self::Jpg => "jpg",
+        }
+    }
+}
+
+impl AudioExtractOutputFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Mp3 => "mp3",
+            Self::Aac => "aac",
+            Self::Wav => "wav",
+            Self::Flac => "flac",
         }
     }
 }
@@ -274,6 +305,27 @@ pub fn screenshot_args(request: &ScreenshotRequest) -> Result<Vec<String>, AppEr
         .into_vec())
 }
 
+pub fn audio_extract_args(request: &AudioExtractRequest) -> Result<Vec<String>, AppError> {
+    validate_audio_extract_request(request)?;
+
+    let builder = CommandArgs::new()
+        .args(["-hide_banner", "-nostdin"])
+        .arg(if request.overwrite { "-y" } else { "-n" })
+        .input_path(&request.input_path)
+        .args(["-map", "0:a:0", "-vn", "-sn"]);
+    let builder = match request.output_format {
+        AudioExtractOutputFormat::Mp3 => builder.args(["-c:a", "libmp3lame", "-q:a", "2"]),
+        AudioExtractOutputFormat::Aac => builder.args(["-c:a", "aac", "-b:a", "192k"]),
+        AudioExtractOutputFormat::Wav => builder.args(["-c:a", "pcm_s16le"]),
+        AudioExtractOutputFormat::Flac => builder.args(["-c:a", "flac"]),
+    };
+
+    Ok(builder
+        .args(["-progress", "pipe:1", "-nostats"])
+        .arg(&request.output_path)
+        .into_vec())
+}
+
 pub fn validate_convert_request(request: &ConvertRequest) -> Result<(), AppError> {
     validate_media_path(&request.input_path)?;
     validate_output_path(
@@ -358,6 +410,29 @@ pub fn validate_screenshot_request(request: &ScreenshotRequest) -> Result<(), Ap
         if request.timestamp_sec > duration_sec + 0.001 {
             return Err(AppError::invalid_input("截图时间点不能超过媒体时长。"));
         }
+    }
+
+    Ok(())
+}
+
+pub fn validate_audio_extract_request(request: &AudioExtractRequest) -> Result<(), AppError> {
+    validate_media_path(&request.input_path)?;
+    validate_output_path(
+        &request.input_path,
+        &request.output_path,
+        request.output_format.extension(),
+    )?;
+
+    if let Some(duration_sec) = request.duration_sec {
+        if !duration_sec.is_finite() || duration_sec < 0.0 {
+            return Err(AppError::invalid_input(
+                "媒体时长无效，无法创建音频提取任务。",
+            ));
+        }
+    }
+
+    if matches!(request.source_audio_stream_count, Some(0)) {
+        return Err(AppError::invalid_input("当前视频没有可提取的音频流。"));
     }
 
     Ok(())
@@ -1113,6 +1188,135 @@ mod tests {
         assert!(screenshot_args(&request).is_err());
     }
 
+    #[test]
+    fn builds_mp3_audio_extract_args() {
+        let request = sample_audio_extract_request(AudioExtractOutputFormat::Mp3, "mp3");
+
+        let args = audio_extract_args(&request).expect("mp3 extract args should build");
+
+        assert_eq!(
+            args[0..5],
+            ["-hide_banner", "-nostdin", "-n", "-i", &request.input_path]
+        );
+        assert!(contains_pair(&args, "-map", "0:a:0"));
+        assert!(args.contains(&"-vn".to_string()));
+        assert!(args.contains(&"-sn".to_string()));
+        assert!(contains_pair(&args, "-c:a", "libmp3lame"));
+        assert!(contains_pair(&args, "-q:a", "2"));
+        assert!(contains_pair(&args, "-progress", "pipe:1"));
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some(request.output_path.as_str())
+        );
+    }
+
+    #[test]
+    fn builds_aac_wav_and_flac_audio_extract_args() {
+        let aac = audio_extract_args(&sample_audio_extract_request(
+            AudioExtractOutputFormat::Aac,
+            "aac",
+        ))
+        .expect("aac extract args should build");
+        let wav = audio_extract_args(&sample_audio_extract_request(
+            AudioExtractOutputFormat::Wav,
+            "wav",
+        ))
+        .expect("wav extract args should build");
+        let flac = audio_extract_args(&sample_audio_extract_request(
+            AudioExtractOutputFormat::Flac,
+            "flac",
+        ))
+        .expect("flac extract args should build");
+
+        assert!(contains_pair(&aac, "-c:a", "aac"));
+        assert!(contains_pair(&aac, "-b:a", "192k"));
+        assert!(contains_pair(&wav, "-c:a", "pcm_s16le"));
+        assert!(contains_pair(&flac, "-c:a", "flac"));
+    }
+
+    #[test]
+    fn keeps_audio_extract_paths_as_single_args() {
+        let request = AudioExtractRequest {
+            input_path: temp_input_path("audio input path", "视频 sample 中文.mp4"),
+            output_path: temp_output_path("audio output path", "音频 output sample.flac"),
+            output_format: AudioExtractOutputFormat::Flac,
+            overwrite: true,
+            duration_sec: Some(5.0),
+            source_audio_stream_count: Some(1),
+        };
+
+        let args = audio_extract_args(&request).expect("path-safe extract args should build");
+
+        assert_eq!(
+            args.iter()
+                .filter(|arg| *arg == &request.input_path)
+                .count(),
+            1
+        );
+        assert_eq!(
+            args.iter()
+                .filter(|arg| *arg == &request.output_path)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn rejects_audio_extract_when_source_has_no_audio_streams() {
+        let request = AudioExtractRequest {
+            source_audio_stream_count: Some(0),
+            ..sample_audio_extract_request(AudioExtractOutputFormat::Mp3, "mp3")
+        };
+
+        assert!(audio_extract_args(&request).is_err());
+    }
+
+    #[test]
+    fn rejects_audio_extract_output_extension_mismatch() {
+        let request = AudioExtractRequest {
+            output_path: temp_output_path("audio-extension", "extracted.wav"),
+            output_format: AudioExtractOutputFormat::Mp3,
+            ..sample_audio_extract_request(AudioExtractOutputFormat::Mp3, "mp3")
+        };
+
+        assert!(audio_extract_args(&request).is_err());
+    }
+
+    #[test]
+    fn rejects_audio_extract_missing_output_parent() {
+        let request = AudioExtractRequest {
+            output_path: temp_missing_parent_output("audio-missing-parent", "extracted.mp3"),
+            ..sample_audio_extract_request(AudioExtractOutputFormat::Mp3, "mp3")
+        };
+
+        assert!(audio_extract_args(&request).is_err());
+    }
+
+    #[test]
+    fn rejects_audio_extract_same_input_and_output_path() {
+        let input_path = temp_input_path("audio-same-path", "sample.mp3");
+        let request = AudioExtractRequest {
+            input_path: input_path.clone(),
+            output_path: input_path,
+            output_format: AudioExtractOutputFormat::Mp3,
+            overwrite: false,
+            duration_sec: Some(1.0),
+            source_audio_stream_count: Some(1),
+        };
+
+        assert!(audio_extract_args(&request).is_err());
+    }
+
+    #[test]
+    fn rejects_audio_extract_invalid_duration() {
+        let request = AudioExtractRequest {
+            duration_sec: Some(-1.0),
+            ..sample_audio_extract_request(AudioExtractOutputFormat::Mp3, "mp3")
+        };
+
+        assert!(audio_extract_args(&request).is_err());
+    }
+
     fn sample_request(
         media_kind: ConvertMediaKind,
         output_format: ConvertOutputFormat,
@@ -1168,6 +1372,23 @@ mod tests {
             timestamp_sec: 1.25,
             overwrite: false,
             source_duration_sec: Some(3.0),
+        }
+    }
+
+    fn sample_audio_extract_request(
+        output_format: AudioExtractOutputFormat,
+        extension: &str,
+    ) -> AudioExtractRequest {
+        AudioExtractRequest {
+            input_path: temp_input_path("audio-extract-input", "sample demo 中文.mp4"),
+            output_path: temp_output_path(
+                "audio-extract-output",
+                &format!("sample demo 中文-audio.{extension}"),
+            ),
+            output_format,
+            overwrite: false,
+            duration_sec: Some(3.0),
+            source_audio_stream_count: Some(1),
         }
     }
 
