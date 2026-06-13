@@ -123,7 +123,7 @@ export function InspectorPanel({
               />
             ))
           ) : (
-            <p className="empty-state">暂无任务。导入媒体后可创建格式转换任务。</p>
+            <p className="empty-state">暂无任务。导入媒体后可创建转换或截取任务。</p>
           )}
         </div>
       ) : (

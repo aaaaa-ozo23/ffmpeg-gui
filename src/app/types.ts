@@ -18,7 +18,7 @@ export type JobStatus =
   | "canceling"
   | "canceled";
 
-export type JobKind = "nullOutput" | "convert";
+export type JobKind = "nullOutput" | "convert" | "trim";
 
 export type ConvertMediaKind = "video" | "audio" | "image";
 
@@ -68,6 +68,22 @@ export type ConvertRequest = {
 export type ConvertJobDraft = {
   itemId: string;
   request: ConvertRequest;
+};
+
+export type TrimMediaKind = "video" | "audio";
+
+export type TrimMode = "copy" | "accurate";
+
+export type TrimRequest = {
+  inputPath: string;
+  outputPath: string;
+  mediaKind: TrimMediaKind;
+  outputFormat: ConvertOutputFormat;
+  mode: TrimMode;
+  startSec: number;
+  endSec: number;
+  overwrite: boolean;
+  sourceDurationSec?: number;
 };
 
 export type InspectorTab = "tasks" | "logs";
