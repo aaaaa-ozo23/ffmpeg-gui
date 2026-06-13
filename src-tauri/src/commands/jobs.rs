@@ -1,6 +1,6 @@
 use crate::{
     errors::AppError,
-    ffmpeg::command_builder::ConvertRequest,
+    ffmpeg::command_builder::{AudioExtractRequest, ConvertRequest},
     jobs::{JobManager, JobQueueConfig, JobRecord},
 };
 
@@ -36,6 +36,15 @@ pub fn enqueue_convert_job(
     request: ConvertRequest,
 ) -> Result<JobRecord, AppError> {
     job_manager.enqueue_convert_job(app, request)
+}
+
+#[tauri::command]
+pub fn enqueue_audio_extract_job(
+    app: tauri::AppHandle,
+    job_manager: tauri::State<'_, JobManager>,
+    request: AudioExtractRequest,
+) -> Result<JobRecord, AppError> {
+    job_manager.enqueue_audio_extract_job(app, request)
 }
 
 #[tauri::command]

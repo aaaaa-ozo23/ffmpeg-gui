@@ -18,7 +18,7 @@ export type JobStatus =
   | "canceling"
   | "canceled";
 
-export type JobKind = "nullOutput" | "convert";
+export type JobKind = "nullOutput" | "convert" | "audioExtract";
 
 export type ConvertMediaKind = "video" | "audio" | "image";
 
@@ -63,6 +63,17 @@ export type ConvertRequest = {
   audioCodec: ConvertAudioCodec;
   overwrite: boolean;
   durationSec?: number;
+};
+
+export type AudioExtractOutputFormat = "mp3" | "aac" | "wav" | "flac";
+
+export type AudioExtractRequest = {
+  inputPath: string;
+  outputPath: string;
+  outputFormat: AudioExtractOutputFormat;
+  overwrite: boolean;
+  durationSec?: number;
+  sourceAudioStreamCount?: number;
 };
 
 export type ConvertJobDraft = {

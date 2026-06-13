@@ -11,6 +11,7 @@ import {
 import { featureConfigs } from "./mockData";
 import type {
   AppErrorPayload,
+  AudioExtractRequest,
   BatchMoveDirection,
   BatchMediaItem,
   BatchMediaState,
@@ -32,11 +33,13 @@ import {
   cancelJob,
   checkFfmpegHealth,
   clearFinishedJobs,
+  enqueueAudioExtractJob,
   enqueueConvertJob,
   getJobQueueConfig,
   listenToJobEvents,
   listJobs,
   probeMedia,
+  selectMediaFile,
   selectMediaFiles,
   setJobQueueConfig,
   toMediaSummary,
@@ -57,6 +60,10 @@ function App() {
     lifecycle: "collecting",
     items: [],
   });
+  const [audioMediaProbeState, setAudioMediaProbeState] =
+    useState<MediaProbeState>({
+      status: "empty",
+    });
   const [jobs, setJobs] = useState<JobRecord[]>([]);
   const [jobQueueConfig, setJobQueueConfigState] = useState<JobQueueConfig>({
     maxConcurrent: 1,
@@ -257,6 +264,36 @@ function App() {
     }
   }, [batchMediaState.items, batchMediaState.lifecycle]);
 
+  const handleSelectAudioMedia = useCallback(async () => {
+    let selectedPath: string | null = null;
+
+    try {
+      selectedPath = await selectMediaFile();
+      if (!selectedPath) {
+        return;
+      }
+
+      setAudioMediaProbeState({
+        status: "loading",
+        path: selectedPath,
+      });
+      setJobCommandError(undefined);
+
+      const media = await probeMedia(selectedPath);
+      setAudioMediaProbeState({
+        status: "ready",
+        media,
+        summary: toMediaSummary(media),
+      });
+    } catch (error) {
+      setAudioMediaProbeState({
+        status: "error",
+        path: selectedPath ?? undefined,
+        error: error as AppErrorPayload,
+      });
+    }
+  }, []);
+
   const handleEnqueueConvertJobs = useCallback(async (drafts: ConvertJobDraft[]) => {
     const createdJobs: Array<{
       draft: ConvertJobDraft;
@@ -350,6 +387,21 @@ function App() {
       setJobCommandError(error as AppErrorPayload);
     }
   }, []);
+
+  const handleEnqueueAudioExtractJob = useCallback(
+    async (request: AudioExtractRequest) => {
+      try {
+        const job = await enqueueAudioExtractJob(request);
+        setJobs((currentJobs) => upsertJob(currentJobs, job));
+        setJobCommandError(undefined);
+        setInspectorTab("tasks");
+        setActiveFeatureId("jobs");
+      } catch (error) {
+        setJobCommandError(error as AppErrorPayload);
+      }
+    },
+    [],
+  );
 
   const handleRemoveBatchItem = useCallback(
     async (itemId: string) => {
@@ -496,8 +548,16 @@ function App() {
               className="icon-button"
               type="button"
               aria-label="打开文件"
-              onClick={handleSelectMedia}
-              disabled={mediaProbeState.status === "loading"}
+              onClick={
+                activeFeatureId === "audio"
+                  ? handleSelectAudioMedia
+                  : handleSelectMedia
+              }
+              disabled={
+                activeFeatureId === "audio"
+                  ? audioMediaProbeState.status === "loading"
+                  : mediaProbeState.status === "loading"
+              }
             >
               <FolderOpen size={18} aria-hidden="true" />
             </button>
@@ -558,14 +618,17 @@ function App() {
           activeFeature={activeFeature}
           mediaState={mediaProbeState}
           batchMediaState={batchMediaState}
+          audioMediaState={audioMediaProbeState}
           jobs={jobs}
           jobQueueConfig={jobQueueConfig}
           jobsRuntime={jobsRuntime}
           jobCommandError={jobCommandError}
           onSelectMedia={handleSelectMedia}
+          onSelectAudioMedia={handleSelectAudioMedia}
           onRemoveBatchItem={handleRemoveBatchItem}
           onMoveBatchItem={handleMoveBatchItem}
           onEnqueueConvertJobs={handleEnqueueConvertJobs}
+          onEnqueueAudioExtractJob={handleEnqueueAudioExtractJob}
           onCancelJob={handleCancelJob}
           onClearFinishedJobs={handleClearFinishedJobs}
           onMaxConcurrentChange={handleMaxConcurrentChange}

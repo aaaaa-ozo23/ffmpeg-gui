@@ -431,5 +431,49 @@
 | 我学到了什么？ | 见 findings.md |
 | 我做了什么？ | 见上方阶段 6 记录 |
 
+### 阶段 7：音频提取
+- **状态：** in progress
+- 执行的操作：
+  - 从 `origin/codex/single-file-convert` 创建独立分支 `codex/stage7-audio-extract`，未叠加 `codex/stage7-trim` 或 `codex/stage7-screenshot`。
+  - 后端新增 `AudioExtractRequest`、`AudioExtractOutputFormat`、`audio_extract_args` 和 `validate_audio_extract_request`。
+  - 复用输出路径校验逻辑，覆盖扩展名、父目录、目录输出、输出等于输入等场景。
+  - `JobKind` 新增 `audioExtract`，`JobManager` 新增 `enqueue_audio_extract_job`，并注册 Tauri command。
+  - 前端新增 `AudioExtractRequest` / `AudioExtractOutputFormat` 类型和 `enqueueAudioExtractJob` invoke。
+  - `selectMediaFile()` 改为真正的单文件选择；转换页继续保留阶段 6 的批量选择。
+  - 新增 `src/features/audio/AudioExtractPanel.tsx`，实现视频限定、音频流检查、MP3/AAC/WAV/FLAC 输出、输出目录选择和自动命名。
+  - `App.tsx` 新增音频页独立单文件 probe 状态，顶部“打开文件”在音频页走单文件选择。
+  - 更新 `task_plan.md` / `findings.md` / `progress.md`，标记本分支只完成音频提取，截取和截图保持独立分支边界。
+- 创建/修改的文件：
+  - `src-tauri/src/commands/jobs.rs`
+  - `src-tauri/src/ffmpeg/command_builder.rs`
+  - `src-tauri/src/jobs/mod.rs`
+  - `src-tauri/src/lib.rs`
+  - `src/app/App.tsx`
+  - `src/app/mockData.ts`
+  - `src/app/types.ts`
+  - `src/features/FeatureWorkspace.tsx`
+  - `src/features/audio/AudioExtractPanel.tsx`
+  - `src/lib/tauri.ts`
+  - `task_plan.md`
+  - `findings.md`
+  - `progress.md`
+
+## 阶段 7 音频提取测试结果
+| 测试 | 输入 | 预期结果 | 实际结果 | 状态 |
+|------|------|---------|---------|------|
+| Rust 单元测试 | `cargo test` | 音频提取参数构造、校验和既有队列/转换回归测试通过 | 43 个测试通过 | pass |
+| TypeScript 类型检查 | `pnpm.cmd exec tsc --noEmit` | 音频提取面板、invoke 和 App wiring 类型正确 | 通过 | pass |
+| Rust 格式检查 | `cargo fmt --check` | Rust 文件格式符合 rustfmt | 通过 | pass |
+| Sidecar 检查 | `pnpm.cmd run sidecar:check` | 项目内 FFmpeg/FFprobe sidecar 可用 | FFmpeg/FFprobe 8.0.1 检查通过 | pass |
+| 前端构建 | `pnpm.cmd build` | TypeScript 与 Vite production build 通过 | 通过 | pass |
+| 桌面打包 | `pnpm.cmd run tauri:build` | Windows release build 和安装包生成成功 | 通过，生成 MSI 和 NSIS 安装包；保留既有 bundle identifier warning | pass |
+| FFmpeg smoke：英文路径视频提取 MP3 | `english\video-with-audio.mp4` | 输出可被 ffprobe 读取，音频编码为 MP3 | `english\video-audio.mp3`，codec `mp3` | pass |
+| FFmpeg smoke：中文路径视频提取 AAC | `中文路径\带音频视频.mp4` | 输出可被 ffprobe 读取，音频编码为 AAC | `中文路径\带音频视频-audio.aac`，codec `aac` | pass |
+| FFmpeg smoke：空格路径视频提取 WAV | `space path\video with audio.mp4` | 输出可被 ffprobe 读取，音频编码为 WAV PCM | `space path\video with audio-audio.wav`，codec `pcm_s16le` | pass |
+| FFmpeg smoke：英文路径视频提取 FLAC | `english\video-with-audio.mp4` | 输出可被 ffprobe 读取，音频编码为 FLAC | `english\video-audio.flac`，codec `flac` | pass |
+| FFmpeg smoke：无音频视频 fixture | `english\video-without-audio.mp4` | ffprobe 能识别没有音频流，用于 UI 禁止创建任务验证 | `audioStreams: 0` | pass |
+| Browser fallback | `http://127.0.0.1:1421` | 普通 Vite 下音频页渲染正常，显示 Tauri runtime fallback，console 无 error/warn | 音频页文案、MP3/AAC/WAV/FLAC 和 fallback 均存在；warn/error 0 | pass |
+| Tauri dev smoke | `pnpm.cmd run tauri:dev` | sidecar 检查、Vite 和 Rust debug app 启动正常 | debug app 启动成功；手动停止后返回预期 `0xffffffff` | pass |
+
 ---
 *每个阶段完成后或遇到错误时更新此文件*

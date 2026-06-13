@@ -1,5 +1,6 @@
 import type {
   AppErrorPayload,
+  AudioExtractRequest,
   BatchMoveDirection,
   BatchMediaState,
   ConvertJobDraft,
@@ -9,6 +10,7 @@ import type {
   JobsRuntimeState,
   MediaProbeState,
 } from "../app/types";
+import { AudioExtractPanel } from "./audio/AudioExtractPanel";
 import { ConvertPanel } from "./convert/ConvertPanel";
 import { FeaturePlaceholder } from "./FeaturePlaceholder";
 import { JobsPanel } from "./jobs/JobsPanel";
@@ -17,14 +19,17 @@ type FeatureWorkspaceProps = {
   activeFeature: FeatureConfig;
   mediaState: MediaProbeState;
   batchMediaState: BatchMediaState;
+  audioMediaState: MediaProbeState;
   jobs: JobRecord[];
   jobQueueConfig: JobQueueConfig;
   jobsRuntime: JobsRuntimeState;
   jobCommandError?: AppErrorPayload;
   onSelectMedia: () => void;
+  onSelectAudioMedia: () => void;
   onRemoveBatchItem: (itemId: string) => void;
   onMoveBatchItem: (itemId: string, direction: BatchMoveDirection) => void;
   onEnqueueConvertJobs: (drafts: ConvertJobDraft[]) => Promise<void>;
+  onEnqueueAudioExtractJob: (request: AudioExtractRequest) => Promise<void>;
   onCancelJob: (jobId: string) => void;
   onClearFinishedJobs: () => void;
   onMaxConcurrentChange: (value: number) => void;
@@ -36,14 +41,17 @@ export function FeatureWorkspace({
   activeFeature,
   mediaState,
   batchMediaState,
+  audioMediaState,
   jobs,
   jobQueueConfig,
   jobsRuntime,
   jobCommandError,
   onSelectMedia,
+  onSelectAudioMedia,
   onRemoveBatchItem,
   onMoveBatchItem,
   onEnqueueConvertJobs,
+  onEnqueueAudioExtractJob,
   onCancelJob,
   onClearFinishedJobs,
   onMaxConcurrentChange,
@@ -77,6 +85,18 @@ export function FeatureWorkspace({
         onMaxConcurrentChange={onMaxConcurrentChange}
         onCopyJobLog={onCopyJobLog}
         onCopyAllLogs={onCopyAllJobLogs}
+      />
+    );
+  }
+
+  if (activeFeature.id === "audio") {
+    return (
+      <AudioExtractPanel
+        mediaState={audioMediaState}
+        jobsRuntime={jobsRuntime}
+        commandError={jobCommandError}
+        onSelectMedia={onSelectAudioMedia}
+        onEnqueueAudioExtractJob={onEnqueueAudioExtractJob}
       />
     );
   }

@@ -12,7 +12,9 @@ use uuid::Uuid;
 use crate::{
     errors::{AppError, ErrorCategory},
     ffmpeg::{
-        command_builder::{convert_args, null_output_args, ConvertRequest},
+        command_builder::{
+            audio_extract_args, convert_args, null_output_args, AudioExtractRequest, ConvertRequest,
+        },
         probe::validate_media_path,
         progress::{parse_out_time_ms, progress_percent},
     },
@@ -63,6 +65,7 @@ impl RunningProcess {
 pub enum JobKind {
     NullOutput,
     Convert,
+    AudioExtract,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -202,6 +205,25 @@ impl JobManager {
     ) -> Result<JobRecord, AppError> {
         let args = convert_args(&request)?;
         let record = JobRecord::new_convert(request, args);
+
+        {
+            let mut state = self.lock_state();
+            state.jobs.push(record.clone());
+        }
+
+        emit_job_event(&app, "jobQueued", record.clone(), None);
+        self.dispatch(app);
+
+        Ok(record)
+    }
+
+    pub fn enqueue_audio_extract_job(
+        &self,
+        app: AppHandle,
+        request: AudioExtractRequest,
+    ) -> Result<JobRecord, AppError> {
+        let args = audio_extract_args(&request)?;
+        let record = JobRecord::new_audio_extract(request, args);
 
         {
             let mut state = self.lock_state();
@@ -515,6 +537,33 @@ impl JobRecord {
             id: Uuid::new_v4().to_string(),
             kind: JobKind::Convert,
             title: format!("转换为 {output_format}：{file_name}"),
+            input_path: request.input_path,
+            output_path: Some(request.output_path),
+            status: JobStatus::Queued,
+            progress_pct: None,
+            duration_sec: request.duration_sec,
+            created_at: now_ms(),
+            started_at: None,
+            finished_at: None,
+            args,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+            exit_code: None,
+            error_category: None,
+            error_message: None,
+        }
+    }
+
+    fn new_audio_extract(request: AudioExtractRequest, args: Vec<String>) -> Self {
+        let file_name = file_name_from_path(&request.input_path);
+        let output_format = request.output_format.extension().to_uppercase();
+
+        Self {
+            id: Uuid::new_v4().to_string(),
+            kind: JobKind::AudioExtract,
+            title: format!("提取音频为 {output_format}：{file_name}"),
             input_path: request.input_path,
             output_path: Some(request.output_path),
             status: JobStatus::Queued,

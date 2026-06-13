@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type {
+  AudioExtractRequest,
   AppErrorPayload,
   ConvertOutputFormat,
   ConvertRequest,
@@ -85,8 +86,22 @@ export async function selectMediaFiles(): Promise<string[]> {
 }
 
 export async function selectMediaFile(): Promise<string | null> {
-  const selected = await selectMediaFiles();
-  return selected[0] ?? null;
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  const selected = await open({
+    title: "选择媒体文件",
+    multiple: false,
+    directory: false,
+    filters: MEDIA_DIALOG_FILTERS,
+  });
+
+  if (!selected) {
+    return null;
+  }
+
+  return Array.isArray(selected) ? selected[0] ?? null : selected;
 }
 
 export async function selectOutputDirectory(): Promise<string | null> {
@@ -202,6 +217,20 @@ export async function enqueueConvertJob(
     return await invoke<JobRecord>("enqueue_convert_job", { request });
   } catch (error) {
     throw normalizeAppError(error, "创建转换任务失败");
+  }
+}
+
+export async function enqueueAudioExtractJob(
+  request: AudioExtractRequest,
+): Promise<JobRecord> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  try {
+    return await invoke<JobRecord>("enqueue_audio_extract_job", { request });
+  } catch (error) {
+    throw normalizeAppError(error, "创建音频提取任务失败");
   }
 }
 
