@@ -23,6 +23,7 @@ import type {
   JobStatus,
   JobsRuntimeState,
   MediaProbeState,
+  ScreenshotRequest,
   SidecarHealthState,
   TrimRequest,
 } from "./types";
@@ -34,6 +35,7 @@ import {
   checkFfmpegHealth,
   clearFinishedJobs,
   enqueueConvertJob,
+  enqueueScreenshotJob,
   enqueueTrimJob,
   getJobQueueConfig,
   listenToJobEvents,
@@ -64,6 +66,10 @@ function App() {
     lifecycle: "collecting",
     items: [],
   });
+  const [screenshotMediaProbeState, setScreenshotMediaProbeState] =
+    useState<MediaProbeState>({
+      status: "empty",
+    });
   const [jobs, setJobs] = useState<JobRecord[]>([]);
   const [jobQueueConfig, setJobQueueConfigState] = useState<JobQueueConfig>({
     maxConcurrent: 1,
@@ -289,6 +295,36 @@ function App() {
     }
   }, []);
 
+  const handleSelectScreenshotMedia = useCallback(async () => {
+    let selectedPath: string | null = null;
+
+    try {
+      selectedPath = await selectMediaFile();
+      if (!selectedPath) {
+        return;
+      }
+
+      setScreenshotMediaProbeState({
+        status: "loading",
+        path: selectedPath,
+      });
+      setJobCommandError(undefined);
+
+      const media = await probeMedia(selectedPath);
+      setScreenshotMediaProbeState({
+        status: "ready",
+        media,
+        summary: toMediaSummary(media),
+      });
+    } catch (error) {
+      setScreenshotMediaProbeState({
+        status: "error",
+        path: selectedPath ?? undefined,
+        error: error as AppErrorPayload,
+      });
+    }
+  }, []);
+
   const handleEnqueueConvertJobs = useCallback(async (drafts: ConvertJobDraft[]) => {
     const createdJobs: Array<{
       draft: ConvertJobDraft;
@@ -394,6 +430,21 @@ function App() {
       setJobCommandError(error as AppErrorPayload);
     }
   }, []);
+
+  const handleEnqueueScreenshotJob = useCallback(
+    async (request: ScreenshotRequest) => {
+      try {
+        const job = await enqueueScreenshotJob(request);
+        setJobs((currentJobs) => upsertJob(currentJobs, job));
+        setJobCommandError(undefined);
+        setInspectorTab("tasks");
+        setActiveFeatureId("jobs");
+      } catch (error) {
+        setJobCommandError(error as AppErrorPayload);
+      }
+    },
+    [],
+  );
 
   const handleRemoveBatchItem = useCallback(
     async (itemId: string) => {
@@ -522,9 +573,15 @@ function App() {
   const isHeaderMediaLoading =
     activeFeatureId === "trim"
       ? trimMediaProbeState.status === "loading"
+      : activeFeatureId === "screenshot"
+        ? screenshotMediaProbeState.status === "loading"
       : mediaProbeState.status === "loading";
   const handleHeaderSelectMedia =
-    activeFeatureId === "trim" ? handleSelectTrimMedia : handleSelectMedia;
+    activeFeatureId === "trim"
+      ? handleSelectTrimMedia
+      : activeFeatureId === "screenshot"
+        ? handleSelectScreenshotMedia
+        : handleSelectMedia;
 
   return (
     <main className="app-window">
@@ -610,16 +667,19 @@ function App() {
           mediaState={mediaProbeState}
           trimMediaState={trimMediaProbeState}
           batchMediaState={batchMediaState}
+          screenshotMediaState={screenshotMediaProbeState}
           jobs={jobs}
           jobQueueConfig={jobQueueConfig}
           jobsRuntime={jobsRuntime}
           jobCommandError={jobCommandError}
           onSelectMedia={handleSelectMedia}
           onSelectTrimMedia={handleSelectTrimMedia}
+          onSelectScreenshotMedia={handleSelectScreenshotMedia}
           onRemoveBatchItem={handleRemoveBatchItem}
           onMoveBatchItem={handleMoveBatchItem}
           onEnqueueConvertJobs={handleEnqueueConvertJobs}
           onEnqueueTrimJob={handleEnqueueTrimJob}
+          onEnqueueScreenshotJob={handleEnqueueScreenshotJob}
           onCancelJob={handleCancelJob}
           onClearFinishedJobs={handleClearFinishedJobs}
           onMaxConcurrentChange={handleMaxConcurrentChange}

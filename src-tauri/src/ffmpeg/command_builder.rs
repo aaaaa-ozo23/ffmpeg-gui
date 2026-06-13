@@ -32,6 +32,17 @@ pub struct TrimRequest {
     pub source_duration_sec: Option<f64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenshotRequest {
+    pub input_path: String,
+    pub output_path: String,
+    pub output_format: ScreenshotOutputFormat,
+    pub timestamp_sec: f64,
+    pub overwrite: bool,
+    pub source_duration_sec: Option<f64>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ConvertMediaKind {
@@ -104,6 +115,13 @@ pub enum ConvertOutputFormat {
     Tiff,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScreenshotOutputFormat {
+    Png,
+    Jpg,
+}
+
 impl ConvertOutputFormat {
     pub fn extension(self) -> &'static str {
         match self {
@@ -133,6 +151,15 @@ impl ConvertOutputFormat {
                 ConvertMediaKind::Audio
             }
             Self::Png | Self::Jpg | Self::Webp | Self::Bmp | Self::Tiff => ConvertMediaKind::Image,
+        }
+    }
+}
+
+impl ScreenshotOutputFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Png => "png",
+            Self::Jpg => "jpg",
         }
     }
 }
@@ -226,6 +253,27 @@ pub fn trim_args(request: &TrimRequest) -> Result<Vec<String>, AppError> {
     Ok(args.into_vec())
 }
 
+pub fn screenshot_args(request: &ScreenshotRequest) -> Result<Vec<String>, AppError> {
+    validate_screenshot_request(request)?;
+
+    let builder = CommandArgs::new()
+        .args(["-hide_banner", "-nostdin"])
+        .arg(if request.overwrite { "-y" } else { "-n" })
+        .args(["-ss", &format_seconds(request.timestamp_sec)])
+        .input_path(&request.input_path)
+        .args(["-map", "0:v:0", "-frames:v", "1", "-an", "-sn"]);
+
+    let builder = match request.output_format {
+        ScreenshotOutputFormat::Png => builder.args(["-c:v", "png"]),
+        ScreenshotOutputFormat::Jpg => builder.args(["-c:v", "mjpeg", "-q:v", "2"]),
+    };
+
+    Ok(builder
+        .args(["-progress", "pipe:1", "-nostats"])
+        .arg(&request.output_path)
+        .into_vec())
+}
+
 pub fn validate_convert_request(request: &ConvertRequest) -> Result<(), AppError> {
     validate_media_path(&request.input_path)?;
     validate_output_path(
@@ -284,6 +332,31 @@ pub fn validate_trim_request(request: &TrimRequest) -> Result<(), AppError> {
 
         if request.end_sec > source_duration_sec + 0.001 {
             return Err(AppError::invalid_input("结束时间不能超过媒体总时长。"));
+        }
+    }
+
+    Ok(())
+}
+
+pub fn validate_screenshot_request(request: &ScreenshotRequest) -> Result<(), AppError> {
+    validate_media_path(&request.input_path)?;
+    validate_output_path(
+        &request.input_path,
+        &request.output_path,
+        request.output_format.extension(),
+    )?;
+
+    if !request.timestamp_sec.is_finite() || request.timestamp_sec < 0.0 {
+        return Err(AppError::invalid_input("截图时间点必须是不小于 0 的秒数。"));
+    }
+
+    if let Some(duration_sec) = request.source_duration_sec {
+        if !duration_sec.is_finite() || duration_sec < 0.0 {
+            return Err(AppError::invalid_input("媒体时长无效，无法创建截图任务。"));
+        }
+
+        if request.timestamp_sec > duration_sec + 0.001 {
+            return Err(AppError::invalid_input("截图时间点不能超过媒体时长。"));
         }
     }
 
@@ -358,6 +431,10 @@ fn validate_output_path(
 
 fn same_path(left: &str, right: &str) -> bool {
     normalize_path(left) == normalize_path(right)
+}
+
+fn format_seconds(seconds: f64) -> String {
+    format!("{seconds:.3}")
 }
 
 fn normalize_path(path: &str) -> String {
@@ -908,6 +985,134 @@ mod tests {
         assert!(args.iter().any(|arg| arg == &request.output_path));
     }
 
+    #[test]
+    fn builds_png_screenshot_args() {
+        let request = sample_screenshot_request(ScreenshotOutputFormat::Png, "png");
+
+        let args = screenshot_args(&request).expect("png screenshot args should build");
+
+        assert_eq!(
+            args[0..7],
+            [
+                "-hide_banner",
+                "-nostdin",
+                "-n",
+                "-ss",
+                "1.250",
+                "-i",
+                &request.input_path
+            ]
+        );
+        assert!(contains_pair(&args, "-map", "0:v:0"));
+        assert!(contains_pair(&args, "-frames:v", "1"));
+        assert!(args.contains(&"-an".to_string()));
+        assert!(args.contains(&"-sn".to_string()));
+        assert!(contains_pair(&args, "-c:v", "png"));
+        assert!(contains_pair(&args, "-progress", "pipe:1"));
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some(request.output_path.as_str())
+        );
+    }
+
+    #[test]
+    fn builds_jpg_screenshot_args() {
+        let request = sample_screenshot_request(ScreenshotOutputFormat::Jpg, "jpg");
+
+        let args = screenshot_args(&request).expect("jpg screenshot args should build");
+
+        assert!(contains_pair(&args, "-c:v", "mjpeg"));
+        assert!(contains_pair(&args, "-q:v", "2"));
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some(request.output_path.as_str())
+        );
+    }
+
+    #[test]
+    fn keeps_screenshot_paths_as_single_args() {
+        let request = ScreenshotRequest {
+            input_path: temp_input_path("screenshot input", "中文 sample video.mp4"),
+            output_path: temp_output_path("screenshot output", "截图 sample output.png"),
+            output_format: ScreenshotOutputFormat::Png,
+            timestamp_sec: 0.5,
+            overwrite: true,
+            source_duration_sec: Some(5.0),
+        };
+
+        let args = screenshot_args(&request).expect("path-safe screenshot args should build");
+
+        assert_eq!(
+            args.iter()
+                .filter(|arg| *arg == &request.input_path)
+                .count(),
+            1
+        );
+        assert_eq!(
+            args.iter()
+                .filter(|arg| *arg == &request.output_path)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn rejects_negative_screenshot_timestamp() {
+        let request = ScreenshotRequest {
+            timestamp_sec: -0.1,
+            ..sample_screenshot_request(ScreenshotOutputFormat::Png, "png")
+        };
+
+        assert!(screenshot_args(&request).is_err());
+    }
+
+    #[test]
+    fn rejects_screenshot_timestamp_beyond_known_duration() {
+        let request = ScreenshotRequest {
+            timestamp_sec: 3.1,
+            source_duration_sec: Some(3.0),
+            ..sample_screenshot_request(ScreenshotOutputFormat::Png, "png")
+        };
+
+        assert!(screenshot_args(&request).is_err());
+    }
+
+    #[test]
+    fn rejects_screenshot_output_extension_mismatch() {
+        let request = ScreenshotRequest {
+            output_path: temp_output_path("screenshot-extension", "frame.jpg"),
+            output_format: ScreenshotOutputFormat::Png,
+            ..sample_screenshot_request(ScreenshotOutputFormat::Png, "png")
+        };
+
+        assert!(screenshot_args(&request).is_err());
+    }
+
+    #[test]
+    fn rejects_screenshot_missing_output_parent() {
+        let request = ScreenshotRequest {
+            output_path: temp_missing_parent_output("screenshot-missing-parent", "frame.png"),
+            ..sample_screenshot_request(ScreenshotOutputFormat::Png, "png")
+        };
+
+        assert!(screenshot_args(&request).is_err());
+    }
+
+    #[test]
+    fn rejects_screenshot_same_input_and_output_path() {
+        let input_path = temp_input_path("screenshot-same-path", "frame.png");
+        let request = ScreenshotRequest {
+            input_path: input_path.clone(),
+            output_path: input_path,
+            output_format: ScreenshotOutputFormat::Png,
+            timestamp_sec: 0.0,
+            overwrite: false,
+            source_duration_sec: Some(1.0),
+        };
+
+        assert!(screenshot_args(&request).is_err());
+    }
+
     fn sample_request(
         media_kind: ConvertMediaKind,
         output_format: ConvertOutputFormat,
@@ -946,6 +1151,23 @@ mod tests {
             end_sec: 4.5,
             overwrite: false,
             source_duration_sec: Some(10.0),
+        }
+    }
+
+    fn sample_screenshot_request(
+        output_format: ScreenshotOutputFormat,
+        extension: &str,
+    ) -> ScreenshotRequest {
+        ScreenshotRequest {
+            input_path: temp_input_path("screenshot-input", "sample demo 中文.mp4"),
+            output_path: temp_output_path(
+                "screenshot-output",
+                &format!("sample demo 中文-screenshot.{extension}"),
+            ),
+            output_format,
+            timestamp_sec: 1.25,
+            overwrite: false,
+            source_duration_sec: Some(3.0),
         }
     }
 

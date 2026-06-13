@@ -14,7 +14,7 @@ export const featureConfigs: FeatureConfig[] = [
   {
     id: "convert",
     label: "转换",
-    description: "批量选择同类媒体，设置输出格式、编码和保存位置。",
+    description: "批量选择同类媒体，设置输出格式、编码和保存目录。",
     icon: Shuffle,
     summary: "容器与编码预设",
   },
@@ -28,7 +28,7 @@ export const featureConfigs: FeatureConfig[] = [
   {
     id: "screenshot",
     label: "截图",
-    description: "指定时间点导出 PNG 或 JPG 图片，后续扩展批量截图。",
+    description: "选择单个视频，指定时间点导出 PNG 或 JPG 图片。",
     icon: ImageIcon,
     summary: "单帧导出",
   },

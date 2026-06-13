@@ -11,6 +11,7 @@ import type {
   JobRecord,
   JobsEvent,
   MediaInfo,
+  ScreenshotRequest,
   TrimRequest,
 } from "../app/types";
 import { MEDIA_DIALOG_FILTERS } from "./mediaFormats";
@@ -231,6 +232,20 @@ export async function enqueueTrimJob(
     return await invoke<JobRecord>("enqueue_trim_job", { request });
   } catch (error) {
     throw normalizeAppError(error, "创建截取任务失败");
+  }
+}
+
+export async function enqueueScreenshotJob(
+  request: ScreenshotRequest,
+): Promise<JobRecord> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  try {
+    return await invoke<JobRecord>("enqueue_screenshot_job", { request });
+  } catch (error) {
+    throw normalizeAppError(error, "创建截图任务失败");
   }
 }
 

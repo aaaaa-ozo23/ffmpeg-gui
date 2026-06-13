@@ -1,6 +1,6 @@
 use crate::{
     errors::AppError,
-    ffmpeg::command_builder::{ConvertRequest, TrimRequest},
+    ffmpeg::command_builder::{ConvertRequest, ScreenshotRequest, TrimRequest},
     jobs::{JobManager, JobQueueConfig, JobRecord},
 };
 
@@ -45,6 +45,15 @@ pub fn enqueue_trim_job(
     request: TrimRequest,
 ) -> Result<JobRecord, AppError> {
     job_manager.enqueue_trim_job(app, request)
+}
+
+#[tauri::command]
+pub fn enqueue_screenshot_job(
+    app: tauri::AppHandle,
+    job_manager: tauri::State<'_, JobManager>,
+    request: ScreenshotRequest,
+) -> Result<JobRecord, AppError> {
+    job_manager.enqueue_screenshot_job(app, request)
 }
 
 #[tauri::command]

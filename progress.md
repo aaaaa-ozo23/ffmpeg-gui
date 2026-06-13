@@ -447,6 +447,18 @@
   - 顶部“打开文件”在截取页使用单文件选择，在转换页继续保留阶段 6 的批量选择。
   - 截取页只接受视频/音频；图片和未知媒体类型在 UI 和后端都不可入队。
   - 更新 `task_plan.md` 和 `findings.md`，阶段 7 标记为 partial in progress，截取完成，截图/音频提取保持 pending。
+### 阶段 7：视频截图
+- **状态：** in progress
+- 执行的操作：
+  - 从 `origin/codex/single-file-convert` 创建独立分支 `codex/stage7-screenshot`，未叠加 `codex/stage7-trim`。
+  - 后端新增 `ScreenshotRequest`、`ScreenshotOutputFormat`、`screenshot_args` 和 `validate_screenshot_request`。
+  - 复用输出路径校验逻辑，覆盖扩展名、父目录、目录输出、输出等于输入等场景。
+  - `JobKind` 新增 `screenshot`，`JobManager` 新增 `enqueue_screenshot_job`，并注册 Tauri command。
+  - 前端新增 `ScreenshotRequest` / `ScreenshotOutputFormat` 类型和 `enqueueScreenshotJob` invoke。
+  - `selectMediaFile()` 改为真正的单文件选择；转换页继续保留阶段 6 的批量选择。
+  - 新增 `src/features/screenshot/ScreenshotPanel.tsx`，实现视频限定、时间输入解析、PNG/JPG 输出、输出目录选择和自动命名。
+  - `App.tsx` 新增截图页独立单文件 probe 状态，顶部“打开文件”在截图页走单文件选择。
+  - 更新 `task_plan.md` / `findings.md` / `progress.md`，标记本分支只完成视频截图，截取和音频提取保持独立分支边界。
 - 创建/修改的文件：
   - `src-tauri/src/commands/jobs.rs`
   - `src-tauri/src/ffmpeg/command_builder.rs`
@@ -458,6 +470,7 @@
   - `src/components/InspectorPanel.tsx`
   - `src/features/FeatureWorkspace.tsx`
   - `src/features/trim/TrimPanel.tsx`
+  - `src/features/screenshot/ScreenshotPanel.tsx`
   - `src/lib/tauri.ts`
   - `src/styles/global.css`
   - `task_plan.md`
@@ -492,6 +505,32 @@
 | 目标是什么？ | 完成基础截取功能：单文件音视频输入、开始/结束时间、快速/精确模式、输出目录自动命名、任务队列接入 |
 | 我学到了什么？ | 见 findings.md |
 | 我做了什么？ | 见上方阶段 7 截取记录 |
+
+## 阶段 7 视频截图测试结果
+| 测试 | 输入 | 预期结果 | 实际结果 | 状态 |
+|------|------|---------|---------|------|
+| Rust 单元测试 | `cargo test` | 截图参数构造、校验和既有队列/转换回归测试通过 | 43 个测试通过 | pass |
+| TypeScript 类型检查 | `pnpm.cmd exec tsc --noEmit` | 截图面板、invoke 和 App wiring 类型正确 | 通过 | pass |
+| Rust 格式检查 | `cargo fmt --check` | 无格式变更需求 | 通过 | pass |
+| sidecar 检查 | `pnpm.cmd run sidecar:check` | 项目内 ffmpeg/ffprobe 可运行且版本匹配 | FFmpeg/FFprobe 均为 `8.0.1-full_build-www.gyan.dev` | pass |
+| 前端构建 | `pnpm.cmd build` | TypeScript 与 Vite 构建通过 | 构建通过，生成 dist 资源 | pass |
+| Tauri release 构建 | `pnpm.cmd run tauri:build` | sidecar 检查、前端构建、Rust release 编译和 MSI/NSIS 打包通过 | 通过，生成 MSI 与 NSIS；仍有 `.app` identifier 已知警告 | pass |
+| 截图 smoke | `D:\tl-temp\ffmpeg-gui-stage7-screenshot-20260613-162756` | 英文、中文、空格路径视频可导出 PNG/JPG 截图并可被 ffprobe 读取 | PNG=`png`，JPG=`mjpeg`，尺寸均为 `320x180` | pass |
+| Browser/Vite fallback | Browser 打开 `http://127.0.0.1:1421` 并切到“截图” | 普通浏览器环境不崩溃，截图页渲染正常，显示 Tauri runtime fallback，无 console error/warn | 显示“选择单个视频”“截图参数”，包含 PNG/JPG，fallback 可见，console warn/error 数量为 0 | pass |
+| Tauri dev 冒烟 | `pnpm.cmd run tauri:dev` | sidecar 检查、Vite ready、Rust debug app 启动 | 已启动 `target\debug\ffmpeg-gui.exe` 和 Vite 1420；随后手动停止，dev 命令记录预期终止退出码 | pass |
+
+## 阶段 7 视频截图错误日志
+| 时间戳 | 错误 | 尝试次数 | 解决方案 |
+|--------|------|---------|---------|
+| 2026-06-13 | Browser runtime 不支持 `networkidle` load state | 1 | 改用支持的 `load` 状态后完成截图页 fallback 验证 |
+| 2026-06-13 | Tauri dev smoke 手动停止 debug app 后命令记录 `exit code 0xffffffff` | 1 | 这是手动清理进程的预期结果；日志已确认 sidecar、Vite 和 debug app 启动成功 |
+
+### 阶段 7：集成合并
+- **状态：** in progress
+- 执行的操作：
+  - 从 `origin/codex/single-file-convert` 创建集成分支 `codex/stage7-full`。
+  - 已合并 `codex/stage7-trim`。
+  - 正在合并 `codex/stage7-screenshot`，并将共享的类型、命令注册、任务分支、前端状态和规划文件解析为截取与截图共存。
 
 ---
 *每个阶段完成后或遇到错误时更新此文件*

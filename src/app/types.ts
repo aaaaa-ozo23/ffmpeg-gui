@@ -18,7 +18,7 @@ export type JobStatus =
   | "canceling"
   | "canceled";
 
-export type JobKind = "nullOutput" | "convert" | "trim";
+export type JobKind = "nullOutput" | "convert" | "trim" | "screenshot";
 
 export type ConvertMediaKind = "video" | "audio" | "image";
 
@@ -63,6 +63,17 @@ export type ConvertRequest = {
   audioCodec: ConvertAudioCodec;
   overwrite: boolean;
   durationSec?: number;
+};
+
+export type ScreenshotOutputFormat = "png" | "jpg";
+
+export type ScreenshotRequest = {
+  inputPath: string;
+  outputPath: string;
+  outputFormat: ScreenshotOutputFormat;
+  timestampSec: number;
+  overwrite: boolean;
+  sourceDurationSec?: number;
 };
 
 export type ConvertJobDraft = {
