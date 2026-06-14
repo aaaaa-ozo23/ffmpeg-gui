@@ -54,6 +54,22 @@ pub struct AudioExtractRequest {
     pub source_audio_stream_count: Option<u32>,
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubtitleRequest {
+    pub input_path: String,
+    pub subtitle_path: String,
+    pub output_path: String,
+    pub mode: SubtitleMode,
+    pub output_format: SubtitleOutputFormat,
+    pub input_format: SubtitleInputFormat,
+    pub encoding: SubtitleEncoding,
+    pub fonts_dir: Option<String>,
+    pub overwrite: bool,
+    pub duration_sec: Option<f64>,
+    pub source_video_stream_count: Option<u32>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ConvertMediaKind {
@@ -142,6 +158,35 @@ pub enum AudioExtractOutputFormat {
     Flac,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SubtitleMode {
+    Embed,
+    Burn,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SubtitleOutputFormat {
+    Mp4,
+    Mkv,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SubtitleInputFormat {
+    Srt,
+    Ass,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SubtitleEncoding {
+    Auto,
+    Utf8,
+    Gbk,
+}
+
 impl ConvertOutputFormat {
     pub fn extension(self) -> &'static str {
         match self {
@@ -191,6 +236,41 @@ impl AudioExtractOutputFormat {
             Self::Aac => "aac",
             Self::Wav => "wav",
             Self::Flac => "flac",
+        }
+    }
+}
+
+impl SubtitleOutputFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Mp4 => "mp4",
+            Self::Mkv => "mkv",
+        }
+    }
+
+    fn convert_output_format(self) -> ConvertOutputFormat {
+        match self {
+            Self::Mp4 => ConvertOutputFormat::Mp4,
+            Self::Mkv => ConvertOutputFormat::Mkv,
+        }
+    }
+}
+
+impl SubtitleInputFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Srt => "srt",
+            Self::Ass => "ass",
+        }
+    }
+}
+
+impl SubtitleEncoding {
+    fn ffmpeg_charenc(self) -> Option<&'static str> {
+        match self {
+            Self::Auto => None,
+            Self::Utf8 => Some("UTF-8"),
+            Self::Gbk => Some("GBK"),
         }
     }
 }
@@ -326,6 +406,17 @@ pub fn audio_extract_args(request: &AudioExtractRequest) -> Result<Vec<String>, 
         .into_vec())
 }
 
+pub fn subtitle_args(request: &SubtitleRequest) -> Result<Vec<String>, AppError> {
+    validate_subtitle_request(request)?;
+
+    let args = match request.mode {
+        SubtitleMode::Embed => subtitle_embed_args(request),
+        SubtitleMode::Burn => subtitle_burn_args(request),
+    };
+
+    Ok(args.into_vec())
+}
+
 pub fn validate_convert_request(request: &ConvertRequest) -> Result<(), AppError> {
     validate_media_path(&request.input_path)?;
     validate_output_path(
@@ -433,6 +524,69 @@ pub fn validate_audio_extract_request(request: &AudioExtractRequest) -> Result<(
 
     if matches!(request.source_audio_stream_count, Some(0)) {
         return Err(AppError::invalid_input("当前视频没有可提取的音频流。"));
+    }
+
+    Ok(())
+}
+
+pub fn validate_subtitle_request(request: &SubtitleRequest) -> Result<(), AppError> {
+    validate_media_path(&request.input_path)?;
+    validate_media_path(&request.subtitle_path)?;
+    validate_output_path(
+        &request.input_path,
+        &request.output_path,
+        request.output_format.extension(),
+    )?;
+
+    let subtitle_extension = Path::new(&request.subtitle_path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_lowercase();
+    if subtitle_extension != request.input_format.extension() {
+        return Err(AppError::invalid_input(format!(
+            "字幕文件扩展名必须是 .{}。",
+            request.input_format.extension()
+        )));
+    }
+
+    if same_path(&request.subtitle_path, &request.output_path) {
+        return Err(AppError::invalid_input("输出路径不能与字幕文件相同。"));
+    }
+
+    if let Some(duration_sec) = request.duration_sec {
+        if !duration_sec.is_finite() || duration_sec < 0.0 {
+            return Err(AppError::invalid_input("媒体时长无效，无法创建字幕任务。"));
+        }
+    }
+
+    if matches!(request.source_video_stream_count, Some(0)) {
+        return Err(AppError::invalid_input("字幕任务只支持包含视频流的媒体。"));
+    }
+
+    if let Some(fonts_dir) = request.fonts_dir.as_deref().map(str::trim) {
+        if !fonts_dir.is_empty() {
+            let path = Path::new(fonts_dir);
+            match path.try_exists() {
+                Ok(true) if path.is_dir() => {}
+                Ok(true) => {
+                    return Err(AppError::invalid_input("字体路径必须是文件夹。"));
+                }
+                Ok(false) => {
+                    return Err(AppError::invalid_input(format!(
+                        "字体目录不存在：{fonts_dir}"
+                    )));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+                    return Err(AppError::permission_denied(fonts_dir, error.to_string()));
+                }
+                Err(error) => {
+                    return Err(AppError::invalid_input(format!(
+                        "无法访问字体目录：{fonts_dir}; {error}"
+                    )));
+                }
+            }
+        }
     }
 
     Ok(())
@@ -637,6 +791,91 @@ fn trim_output_media_kind(output_format: ConvertOutputFormat) -> Option<TrimMedi
         | ConvertOutputFormat::Opus => Some(TrimMediaKind::Audio),
         _ => None,
     }
+}
+
+fn subtitle_embed_args(request: &SubtitleRequest) -> CommandArgs {
+    let builder = CommandArgs::new()
+        .args(["-hide_banner", "-nostdin"])
+        .arg(if request.overwrite { "-y" } else { "-n" })
+        .input_path(&request.input_path);
+    let builder = if let Some(charenc) = request.encoding.ffmpeg_charenc() {
+        builder.args(["-sub_charenc", charenc])
+    } else {
+        builder
+    };
+    let builder = builder
+        .input_path(&request.subtitle_path)
+        .args(["-map", "0:v:0", "-map", "0:a?", "-map", "1:0"])
+        .args(["-c:v", "copy", "-c:a", "copy"])
+        .args(["-c:s", subtitle_embed_codec(request)])
+        .args(["-progress", "pipe:1", "-nostats"]);
+
+    add_movflags_for_subtitle_embed(builder, request.output_format).arg(&request.output_path)
+}
+
+fn subtitle_burn_args(request: &SubtitleRequest) -> CommandArgs {
+    let output_format = request.output_format.convert_output_format();
+    let builder = CommandArgs::new()
+        .args(["-hide_banner", "-nostdin"])
+        .arg(if request.overwrite { "-y" } else { "-n" })
+        .input_path(&request.input_path)
+        .args(["-map", "0:v:0", "-map", "0:a?", "-sn"])
+        .arg("-vf")
+        .arg(subtitle_filter(request));
+    let builder = video_auto_codec_args(builder, output_format);
+
+    add_faststart_for_format(builder, output_format, false)
+        .args(["-progress", "pipe:1", "-nostats"])
+        .arg(&request.output_path)
+}
+
+fn subtitle_embed_codec(request: &SubtitleRequest) -> &'static str {
+    match request.output_format {
+        SubtitleOutputFormat::Mp4 => "mov_text",
+        SubtitleOutputFormat::Mkv => match request.input_format {
+            SubtitleInputFormat::Srt => "srt",
+            SubtitleInputFormat::Ass => "ass",
+        },
+    }
+}
+
+fn add_movflags_for_subtitle_embed(
+    builder: CommandArgs,
+    output_format: SubtitleOutputFormat,
+) -> CommandArgs {
+    if output_format == SubtitleOutputFormat::Mp4 {
+        builder.args(["-movflags", "+faststart"])
+    } else {
+        builder
+    }
+}
+
+fn subtitle_filter(request: &SubtitleRequest) -> String {
+    let mut filter = format!(
+        "subtitles='{}'",
+        escape_subtitle_filter_path(&request.subtitle_path)
+    );
+
+    if let Some(charenc) = request.encoding.ffmpeg_charenc() {
+        filter.push_str(":charenc=");
+        filter.push_str(charenc);
+    }
+
+    if let Some(fonts_dir) = request.fonts_dir.as_deref().map(str::trim) {
+        if !fonts_dir.is_empty() {
+            filter.push_str(":fontsdir='");
+            filter.push_str(&escape_subtitle_filter_path(fonts_dir));
+            filter.push('\'');
+        }
+    }
+
+    filter
+}
+
+fn escape_subtitle_filter_path(path: &str) -> String {
+    path.replace('\\', "/")
+        .replace(':', "\\:")
+        .replace('\'', "\\'")
 }
 
 fn video_auto_codec_args(builder: CommandArgs, output_format: ConvertOutputFormat) -> CommandArgs {
@@ -1313,6 +1552,241 @@ mod tests {
         assert!(audio_extract_args(&request).is_err());
     }
 
+    #[test]
+    fn builds_srt_to_mkv_subtitle_embed_args() {
+        let request = sample_subtitle_request(
+            SubtitleMode::Embed,
+            SubtitleInputFormat::Srt,
+            SubtitleOutputFormat::Mkv,
+            "srt",
+            "mkv",
+        );
+
+        let args = subtitle_args(&request).expect("srt mkv subtitle args should build");
+
+        assert_eq!(
+            args[0..5],
+            ["-hide_banner", "-nostdin", "-n", "-i", &request.input_path]
+        );
+        assert!(contains_pair(&args, "-map", "0:v:0"));
+        assert!(contains_pair(&args, "-map", "0:a?"));
+        assert!(contains_pair(&args, "-map", "1:0"));
+        assert!(contains_pair(&args, "-c:v", "copy"));
+        assert!(contains_pair(&args, "-c:a", "copy"));
+        assert!(contains_pair(&args, "-c:s", "srt"));
+        assert!(!contains_pair(&args, "-movflags", "+faststart"));
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some(request.output_path.as_str())
+        );
+    }
+
+    #[test]
+    fn builds_srt_to_mp4_mov_text_subtitle_embed_args() {
+        let request = sample_subtitle_request(
+            SubtitleMode::Embed,
+            SubtitleInputFormat::Srt,
+            SubtitleOutputFormat::Mp4,
+            "srt",
+            "mp4",
+        );
+
+        let args = subtitle_args(&request).expect("srt mp4 subtitle args should build");
+
+        assert!(contains_pair(&args, "-c:s", "mov_text"));
+        assert!(contains_pair(&args, "-movflags", "+faststart"));
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some(request.output_path.as_str())
+        );
+    }
+
+    #[test]
+    fn builds_ass_to_mkv_subtitle_embed_args() {
+        let request = sample_subtitle_request(
+            SubtitleMode::Embed,
+            SubtitleInputFormat::Ass,
+            SubtitleOutputFormat::Mkv,
+            "ass",
+            "mkv",
+        );
+
+        let args = subtitle_args(&request).expect("ass mkv subtitle args should build");
+
+        assert!(contains_pair(&args, "-c:s", "ass"));
+        assert_eq!(
+            args.iter()
+                .filter(|arg| *arg == &request.subtitle_path)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn builds_srt_hard_subtitle_burn_args() {
+        let request = SubtitleRequest {
+            encoding: SubtitleEncoding::Utf8,
+            fonts_dir: Some(temp_dir("subtitle-fonts").to_string_lossy().into_owned()),
+            ..sample_subtitle_request(
+                SubtitleMode::Burn,
+                SubtitleInputFormat::Srt,
+                SubtitleOutputFormat::Mp4,
+                "srt",
+                "mp4",
+            )
+        };
+
+        let args = subtitle_args(&request).expect("srt burn subtitle args should build");
+
+        assert!(contains_pair(&args, "-map", "0:v:0"));
+        assert!(contains_pair(&args, "-map", "0:a?"));
+        assert!(args.contains(&"-sn".to_string()));
+        assert!(args.contains(&"-vf".to_string()));
+        assert!(args.iter().any(|arg| {
+            arg.starts_with("subtitles='")
+                && arg.contains(":charenc=UTF-8")
+                && arg.contains(":fontsdir='")
+        }));
+        assert!(contains_pair(&args, "-c:v", "libx264"));
+        assert!(contains_pair(&args, "-c:a", "aac"));
+        assert!(contains_pair(&args, "-movflags", "+faststart"));
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some(request.output_path.as_str())
+        );
+    }
+
+    #[test]
+    fn builds_ass_hard_subtitle_burn_args() {
+        let request = sample_subtitle_request(
+            SubtitleMode::Burn,
+            SubtitleInputFormat::Ass,
+            SubtitleOutputFormat::Mkv,
+            "ass",
+            "mkv",
+        );
+
+        let args = subtitle_args(&request).expect("ass burn subtitle args should build");
+
+        assert!(contains_pair(&args, "-vf", &subtitle_filter(&request)));
+        assert!(contains_pair(&args, "-c:v", "libx264"));
+        assert!(contains_pair(&args, "-c:a", "aac"));
+        assert!(!contains_pair(&args, "-movflags", "+faststart"));
+    }
+
+    #[test]
+    fn keeps_subtitle_paths_as_single_args_for_embed() {
+        let request = sample_subtitle_request(
+            SubtitleMode::Embed,
+            SubtitleInputFormat::Srt,
+            SubtitleOutputFormat::Mp4,
+            "srt",
+            "mp4",
+        );
+
+        let args = subtitle_args(&request).expect("path-safe subtitle args should build");
+
+        assert_eq!(
+            args.iter()
+                .filter(|arg| *arg == &request.input_path)
+                .count(),
+            1
+        );
+        assert_eq!(
+            args.iter()
+                .filter(|arg| *arg == &request.subtitle_path)
+                .count(),
+            1
+        );
+        assert_eq!(
+            args.iter()
+                .filter(|arg| *arg == &request.output_path)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn escapes_subtitle_filter_paths_for_windows() {
+        assert_eq!(
+            escape_subtitle_filter_path(r"D:\Media Input\字幕 sample's.srt"),
+            r"D\:/Media Input/字幕 sample\'s.srt"
+        );
+    }
+
+    #[test]
+    fn rejects_subtitle_output_extension_mismatch() {
+        let request = SubtitleRequest {
+            output_path: temp_output_path("subtitle-extension", "subtitled.mkv"),
+            output_format: SubtitleOutputFormat::Mp4,
+            ..sample_subtitle_request(
+                SubtitleMode::Embed,
+                SubtitleInputFormat::Srt,
+                SubtitleOutputFormat::Mp4,
+                "srt",
+                "mp4",
+            )
+        };
+
+        assert!(subtitle_args(&request).is_err());
+    }
+
+    #[test]
+    fn rejects_subtitle_same_output_as_input_or_subtitle_path() {
+        let mut input_same = sample_subtitle_request(
+            SubtitleMode::Embed,
+            SubtitleInputFormat::Srt,
+            SubtitleOutputFormat::Mp4,
+            "srt",
+            "mp4",
+        );
+        input_same.output_path = input_same.input_path.clone();
+        assert!(subtitle_args(&input_same).is_err());
+
+        let mut subtitle_same = sample_subtitle_request(
+            SubtitleMode::Embed,
+            SubtitleInputFormat::Srt,
+            SubtitleOutputFormat::Mp4,
+            "srt",
+            "mp4",
+        );
+        subtitle_same.output_path = subtitle_same.subtitle_path.clone();
+        assert!(subtitle_args(&subtitle_same).is_err());
+    }
+
+    #[test]
+    fn rejects_non_video_subtitle_request() {
+        let request = SubtitleRequest {
+            source_video_stream_count: Some(0),
+            ..sample_subtitle_request(
+                SubtitleMode::Burn,
+                SubtitleInputFormat::Srt,
+                SubtitleOutputFormat::Mp4,
+                "srt",
+                "mp4",
+            )
+        };
+
+        assert!(subtitle_args(&request).is_err());
+    }
+
+    #[test]
+    fn rejects_subtitle_input_extension_mismatch() {
+        let request = SubtitleRequest {
+            subtitle_path: temp_subtitle_path("subtitle-extension-input", "subtitle.ass"),
+            input_format: SubtitleInputFormat::Srt,
+            ..sample_subtitle_request(
+                SubtitleMode::Embed,
+                SubtitleInputFormat::Srt,
+                SubtitleOutputFormat::Mkv,
+                "srt",
+                "mkv",
+            )
+        };
+
+        assert!(subtitle_args(&request).is_err());
+    }
+
     fn sample_request(
         media_kind: ConvertMediaKind,
         output_format: ConvertOutputFormat,
@@ -1388,9 +1862,44 @@ mod tests {
         }
     }
 
+    fn sample_subtitle_request(
+        mode: SubtitleMode,
+        input_format: SubtitleInputFormat,
+        output_format: SubtitleOutputFormat,
+        subtitle_extension: &str,
+        output_extension: &str,
+    ) -> SubtitleRequest {
+        SubtitleRequest {
+            input_path: temp_input_path("subtitle-input", "sample demo 中文.mp4"),
+            subtitle_path: temp_subtitle_path(
+                "subtitle-file",
+                &format!("sample subtitle 中文.{subtitle_extension}"),
+            ),
+            output_path: temp_output_path(
+                "subtitle-output",
+                &format!("sample demo 中文-subtitled.{output_extension}"),
+            ),
+            mode,
+            output_format,
+            input_format,
+            encoding: SubtitleEncoding::Auto,
+            fonts_dir: None,
+            overwrite: false,
+            duration_sec: Some(3.0),
+            source_video_stream_count: Some(1),
+        }
+    }
+
     fn temp_input_path(folder: &str, file_name: &str) -> String {
         let path = temp_dir(folder).join(file_name);
         fs::write(&path, b"test media path placeholder").expect("input fixture should be writable");
+        path.to_string_lossy().into_owned()
+    }
+
+    fn temp_subtitle_path(folder: &str, file_name: &str) -> String {
+        let path = temp_dir(folder).join(file_name);
+        fs::write(&path, b"1\n00:00:00,000 --> 00:00:01,000\nsubtitle\n")
+            .expect("subtitle fixture should be writable");
         path.to_string_lossy().into_owned()
     }
 

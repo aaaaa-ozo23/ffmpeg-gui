@@ -616,5 +616,55 @@
 | 我学到了什么？ | 见 findings.md |
 | 我做了什么？ | 见上方阶段 7 全量统一验证记录 |
 
+### 阶段 8：字幕功能分支
+- **状态：** complete（本分支只做字幕；倍速导出留到后续分支）
+- 执行的操作：
+  - 从 `codex/stage7-full` 创建并切换到 `codex/stage8-subtitles`。
+  - 后端新增 `SubtitleRequest`、`SubtitleMode`、`SubtitleOutputFormat`、`SubtitleInputFormat`、`SubtitleEncoding`。
+  - 新增 `subtitle_args` 和 `validate_subtitle_request`，覆盖视频输入、字幕文件、输出路径、字幕格式、时长、视频流数量和字体目录校验。
+  - 封装字幕模式支持 SRT/ASS 到 MKV，SRT/ASS 到 MP4 时转 `mov_text`，视频/音频流使用 copy，不保留源字幕轨。
+  - 硬字幕烧录模式使用 `subtitles` filter，新增 Windows filter path 转义 helper，视频重编码并复用稳定自动编码策略。
+  - `JobKind` 新增 `subtitle`，`JobManager` 新增 `enqueue_subtitle_job`，注册 Tauri command `enqueue_subtitle_job`。
+  - 前端新增 `SubtitleRequest` 类型、`enqueueSubtitleJob`、`selectSubtitleFile` 和 `selectFontsDirectory`。
+  - 新增 `src/features/subtitle/SubtitlePanel.tsx`，实现单视频选择、字幕文件选择、封装/烧录切换、MP4/MKV 输出、编码、字体目录、输出目录和覆盖选项。
+  - `App.tsx` 新增字幕页独立单文件 probe 状态，顶部“打开文件”在字幕页走单文件选择。
+  - `FeatureWorkspace` 接入字幕页，右侧任务空状态文案更新为通用媒体处理任务。
+- 创建/修改的文件：
+  - `src-tauri/src/commands/jobs.rs`
+  - `src-tauri/src/ffmpeg/command_builder.rs`
+  - `src-tauri/src/jobs/mod.rs`
+  - `src-tauri/src/lib.rs`
+  - `src/app/App.tsx`
+  - `src/app/types.ts`
+  - `src/components/InspectorPanel.tsx`
+  - `src/features/FeatureWorkspace.tsx`
+  - `src/features/subtitle/SubtitlePanel.tsx`
+  - `src/lib/tauri.ts`
+  - `src/styles/global.css`
+  - `task_plan.md`
+  - `findings.md`
+  - `progress.md`
+
+## 阶段 8 字幕测试结果
+| 测试 | 输入 | 预期结果 | 实际结果 | 状态 |
+|------|------|---------|---------|------|
+| Rust 格式检查 | `cargo fmt --check --manifest-path src-tauri/Cargo.toml` | Rust 文件格式符合 rustfmt | 通过 | pass |
+| Rust 单元测试 | `cargo test --manifest-path src-tauri/Cargo.toml` | 字幕参数构造、校验和既有队列/转换/截取/截图/音频提取回归通过 | 70 个测试通过 | pass |
+| TypeScript 类型检查 | `pnpm.cmd exec tsc --noEmit` | 字幕面板、typed invoke 和 App wiring 类型正确 | 通过 | pass |
+| Sidecar 检查 | `pnpm.cmd run sidecar:check` | 项目内 FFmpeg/FFprobe sidecar 可用 | FFmpeg/FFprobe 8.0.1 检查通过 | pass |
+| 前端构建 | `pnpm.cmd build` | TypeScript 与 Vite production build 通过 | 通过，生成 dist 资源 | pass |
+| Tauri release 构建 | `pnpm.cmd run tauri:build` | Windows release build 和安装包生成成功 | 首次因旧 release exe 文件锁失败；停止精确路径进程后重跑通过，生成 MSI 与 NSIS | pass |
+| FFmpeg smoke：英文 SRT 封装 MKV | `D:\tl-temp\ffmpeg-gui-stage8-subtitles-20260613-202327\english` | 输出包含外挂字幕流 | 输出 subtitle stream 为 `subrip` | pass |
+| FFmpeg smoke：空格路径 SRT 封装 MP4 | `D:\tl-temp\ffmpeg-gui-stage8-subtitles-20260613-202327\space path` | 输出包含 MP4 字幕流 | 输出 subtitle stream 为 `mov_text` | pass |
+| FFmpeg smoke：中文路径 ASS 封装 MKV | `D:\tl-temp\ffmpeg-gui-stage8-subtitles-20260613-202327\中文路径` | 输出包含 ASS 字幕流 | 输出 subtitle stream 为 `ass` | pass |
+| FFmpeg smoke：中文路径 SRT 硬字幕烧录 MP4 | `D:\tl-temp\ffmpeg-gui-stage8-subtitles-20260613-202327\中文路径` | 输出可被 ffprobe 读取且无字幕流 | 输出包含 video/audio，无 subtitle stream | pass |
+| FFmpeg smoke：空格路径 ASS 硬字幕烧录 MKV | `D:\tl-temp\ffmpeg-gui-stage8-subtitles-20260613-202327\space path` | 输出可被 ffprobe 读取且无字幕流 | 输出包含 video/audio，无 subtitle stream | pass |
+| Browser fallback | Browser 打开 `http://127.0.0.1:1421` 并切到“字幕” | 普通浏览器环境不崩溃，字幕页渲染正常，显示 Tauri runtime fallback，无 console error/warn | 显示“选择单个视频”“封装字幕”“烧录字幕”“外挂字幕”“字幕编码”“输出目录”；切换烧录后出现 `-burned-subtitles` 命名，高级设置可见“字体目录”；warn/error 0 | pass |
+
+## 阶段 8 字幕错误日志
+| 时间戳 | 错误 | 尝试次数 | 解决方案 |
+|--------|------|---------|---------|
+| 2026-06-13 | 首次 `pnpm.cmd run tauri:build` 失败：旧的 `src-tauri\target\release\ffmpeg-gui.exe` 正在运行，Cargo 无法删除 release exe | 1 | 用精确 ExecutablePath 定位并停止该进程，随后重跑 `pnpm.cmd run tauri:build` 成功生成 MSI 和 NSIS |
+
 ---
 *每个阶段完成后或遇到错误时更新此文件*

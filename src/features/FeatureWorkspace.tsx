@@ -10,6 +10,7 @@ import type {
   JobsRuntimeState,
   MediaProbeState,
   ScreenshotRequest,
+  SubtitleRequest,
   TrimRequest,
 } from "../app/types";
 import { AudioExtractPanel } from "./audio/AudioExtractPanel";
@@ -17,6 +18,7 @@ import { ConvertPanel } from "./convert/ConvertPanel";
 import { FeaturePlaceholder } from "./FeaturePlaceholder";
 import { JobsPanel } from "./jobs/JobsPanel";
 import { ScreenshotPanel } from "./screenshot/ScreenshotPanel";
+import { SubtitlePanel } from "./subtitle/SubtitlePanel";
 import { TrimPanel } from "./trim/TrimPanel";
 
 type FeatureWorkspaceProps = {
@@ -26,6 +28,7 @@ type FeatureWorkspaceProps = {
   batchMediaState: BatchMediaState;
   screenshotMediaState: MediaProbeState;
   audioMediaState: MediaProbeState;
+  subtitleMediaState: MediaProbeState;
   jobs: JobRecord[];
   jobQueueConfig: JobQueueConfig;
   jobsRuntime: JobsRuntimeState;
@@ -34,12 +37,14 @@ type FeatureWorkspaceProps = {
   onSelectTrimMedia: () => void;
   onSelectScreenshotMedia: () => void;
   onSelectAudioMedia: () => void;
+  onSelectSubtitleMedia: () => void;
   onRemoveBatchItem: (itemId: string) => void;
   onMoveBatchItem: (itemId: string, direction: BatchMoveDirection) => void;
   onEnqueueConvertJobs: (drafts: ConvertJobDraft[]) => Promise<void>;
   onEnqueueTrimJob: (request: TrimRequest) => Promise<void>;
   onEnqueueScreenshotJob: (request: ScreenshotRequest) => Promise<void>;
   onEnqueueAudioExtractJob: (request: AudioExtractRequest) => Promise<void>;
+  onEnqueueSubtitleJob: (request: SubtitleRequest) => Promise<void>;
   onCancelJob: (jobId: string) => void;
   onClearFinishedJobs: () => void;
   onMaxConcurrentChange: (value: number) => void;
@@ -54,6 +59,7 @@ export function FeatureWorkspace({
   batchMediaState,
   screenshotMediaState,
   audioMediaState,
+  subtitleMediaState,
   jobs,
   jobQueueConfig,
   jobsRuntime,
@@ -62,12 +68,14 @@ export function FeatureWorkspace({
   onSelectTrimMedia,
   onSelectScreenshotMedia,
   onSelectAudioMedia,
+  onSelectSubtitleMedia,
   onRemoveBatchItem,
   onMoveBatchItem,
   onEnqueueConvertJobs,
   onEnqueueTrimJob,
   onEnqueueScreenshotJob,
   onEnqueueAudioExtractJob,
+  onEnqueueSubtitleJob,
   onCancelJob,
   onClearFinishedJobs,
   onMaxConcurrentChange,
@@ -137,6 +145,18 @@ export function FeatureWorkspace({
         commandError={jobCommandError}
         onSelectMedia={onSelectAudioMedia}
         onEnqueueAudioExtractJob={onEnqueueAudioExtractJob}
+      />
+    );
+  }
+
+  if (activeFeature.id === "subtitle") {
+    return (
+      <SubtitlePanel
+        mediaState={subtitleMediaState}
+        jobsRuntime={jobsRuntime}
+        commandError={jobCommandError}
+        onSelectMedia={onSelectSubtitleMedia}
+        onEnqueueSubtitleJob={onEnqueueSubtitleJob}
       />
     );
   }

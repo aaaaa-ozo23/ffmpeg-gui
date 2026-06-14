@@ -13,6 +13,7 @@ import type {
   JobsEvent,
   MediaInfo,
   ScreenshotRequest,
+  SubtitleRequest,
   TrimRequest,
 } from "../app/types";
 import { MEDIA_DIALOG_FILTERS } from "./mediaFormats";
@@ -106,6 +107,30 @@ export async function selectMediaFile(): Promise<string | null> {
   return selected;
 }
 
+export async function selectSubtitleFile(): Promise<string | null> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  const selected = await open({
+    title: "选择字幕文件",
+    multiple: false,
+    directory: false,
+    filters: [
+      {
+        name: "字幕文件",
+        extensions: ["srt", "ass"],
+      },
+    ],
+  });
+
+  if (!selected || Array.isArray(selected)) {
+    return null;
+  }
+
+  return selected;
+}
+
 export async function selectOutputDirectory(): Promise<string | null> {
   if (!isTauriRuntime()) {
     throw TAURI_UNAVAILABLE_ERROR;
@@ -113,6 +138,18 @@ export async function selectOutputDirectory(): Promise<string | null> {
 
   return await open({
     title: "选择输出目录",
+    multiple: false,
+    directory: true,
+  });
+}
+
+export async function selectFontsDirectory(): Promise<string | null> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  return await open({
+    title: "选择字体目录",
     multiple: false,
     directory: true,
   });
@@ -261,6 +298,20 @@ export async function enqueueAudioExtractJob(
     return await invoke<JobRecord>("enqueue_audio_extract_job", { request });
   } catch (error) {
     throw normalizeAppError(error, "创建音频提取任务失败");
+  }
+}
+
+export async function enqueueSubtitleJob(
+  request: SubtitleRequest,
+): Promise<JobRecord> {
+  if (!isTauriRuntime()) {
+    throw TAURI_UNAVAILABLE_ERROR;
+  }
+
+  try {
+    return await invoke<JobRecord>("enqueue_subtitle_job", { request });
+  } catch (error) {
+    throw normalizeAppError(error, "创建字幕任务失败");
   }
 }
 

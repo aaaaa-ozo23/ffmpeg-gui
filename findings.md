@@ -127,6 +127,16 @@
 - 阶段 7 集成后的 Rust 单元测试数量为 59 个，覆盖转换、截取、截图、音频提取、媒体探测、进度和任务队列。
 - 阶段 7 集成后的普通 Vite fallback 已用 in-app Browser 依次验证“截取”“截图”“音频”页面，三个页面都显示 Tauri runtime fallback 且 console warn/error 为 0。
 - 阶段 7 集成后的 Tauri dev smoke 可完成 sidecar 检查、Vite 1420 启动和 Rust debug app 启动；主动停止 debug app 时仍返回预期 `0xffffffff`。
+- 阶段 8 字幕分支 `codex/stage8-subtitles` 基于 `codex/stage7-full` 创建，本轮只实现字幕功能，倍速导出留到后续独立分支。
+- 阶段 8 字幕后端新增 `SubtitleRequest`，字段包括视频输入、外挂字幕路径、输出路径、封装/烧录模式、MP4/MKV 输出、SRT/ASS 输入、auto/UTF-8/GBK 编码、可选字体目录、覆盖策略、时长和视频流数量。
+- 字幕封装模式参数为双输入：`-i <video> [-sub_charenc <encoding>] -i <subtitle> -map 0:v:0 -map 0:a? -map 1:0 -c:v copy -c:a copy -c:s <codec>`；MKV 保留 SRT/ASS，MP4 统一转 `mov_text`。
+- 字幕烧录模式使用 `subtitles` filter，字幕路径统一转换为 FFmpeg filter 可接受的正斜杠路径并转义盘符冒号和单引号；烧录输出会重编码视频并按容器使用稳定音频编码。
+- 阶段 8 字幕任务新增 `JobKind::Subtitle` 和 `enqueue_subtitle_job`，继续复用现有 `JobManager`、`jobs-event`、进度、取消和日志。
+- 阶段 8 字幕前端新增 `src/features/subtitle/SubtitlePanel.tsx`，独立维护字幕页单视频探测状态，并提供字幕文件选择、封装/烧录切换、输出目录、编码、字体目录和覆盖选项。
+- 阶段 8 初步验证时 Rust 单元测试数量从 59 个增至 70 个，覆盖 SRT/ASS 封装、MP4 `mov_text`、硬字幕 filter、路径单参数传递、filter path 转义和错误校验。
+- 阶段 8 字幕 smoke 位于 `D:\tl-temp\ffmpeg-gui-stage8-subtitles-20260613-202327`，覆盖英文路径、中文路径、空格路径，验证 SRT/ASS 封装和硬字幕烧录输出均可被 ffprobe 读取。
+- 普通 Vite fallback 下字幕页可正常渲染，显示 Tauri runtime fallback，控制台 warn/error 为 0；切换烧录模式后自动命名变为 `-burned-subtitles`，高级设置中可见字体目录。
+- 阶段 8 字幕分支 `codex/stage8-subtitles` 已完成 `cargo fmt --check`、`cargo test`、TypeScript 类型检查、sidecar 检查、前端构建、FFmpeg smoke、Browser fallback 和 Tauri release 打包验证。
 
 ## 技术决策
 | 决策 | 理由 |
@@ -183,6 +193,12 @@
 | 音频提取分支只支持单文件视频输入 | 符合阶段 7 v1 范围，批量提取留到阶段 9 批量队列能力 |
 | 音频提取只开放 MP3/AAC/WAV/FLAC | 覆盖首版要求，避免把提取页扩展成第二个音频转换页 |
 | 音频提取页使用独立单文件选择状态 | 阶段 6 转换页已是批量选择，音频提取页不应复用并污染批量转换列表 |
+| 阶段 8 字幕与倍速拆分 | 字幕封装/烧录涉及容器、编码和字体风险；先完成字幕分支可降低验证矩阵，倍速后续独立实现 |
+| 字幕功能只支持单文件视频输入 | 符合阶段 8 v1 范围，批量字幕处理留到阶段 9 队列增强 |
+| 字幕封装只映射外部字幕，不保留源字幕轨 | 避免多字幕轨选择和容器兼容性扩大范围；多轨选择留给后续路线 |
+| MP4 字幕封装统一使用 `mov_text` | MP4 对 SRT/ASS 原生支持有限，`mov_text` 是更稳定的兼容输出 |
+| 硬字幕烧录必须重编码视频 | FFmpeg filter 需要重编码视频流，UI 明确提示烧录后字幕不可关闭 |
+| 字体目录放在字幕高级设置中 | 普通封装不需要字体目录，烧录 ASS 时才需要补充字体定位；折叠在高级设置可降低默认表单复杂度 |
 
 ## 遇到的问题
 | 问题 | 解决方案 |
@@ -216,6 +232,7 @@
 | 批量改造后首次 `tauri:build` 失败，旧 release `ffmpeg-gui.exe` 锁住目标文件 | 定位并停止本仓库 release 进程后重跑成功 |
 | Browser runtime 不支持 `networkidle` load state | 改用支持的 `load` 状态完成截图页 fallback 验证 |
 | Tauri dev smoke 手动停止 debug app 后返回 `exit code 0xffffffff` | 记录为手动终止的预期结果；日志已确认 sidecar、Vite 和 debug app 启动成功 |
+| 阶段 8 字幕首次 `tauri:build` 失败，旧 release `ffmpeg-gui.exe` 锁住目标文件 | 用精确 ExecutablePath 定位并停止 `src-tauri\target\release\ffmpeg-gui.exe` 进程后重跑成功 |
 
 ## 规划结论
 - 开发计划已写入 task_plan.md。
@@ -229,6 +246,7 @@
 - 阶段 6 已完成，真实格式转换任务已接入任务系统，并补强为同类多文件批量转换；下一阶段应进入截取、截图、音频提取。
 - 阶段 7 已完成，截取、截图、音频提取三个独立分支已合并到 `codex/stage7-full` 并完成统一验证。
 - 阶段 7 已完成截取片段功能的首个分支；截图和音频提取仍保持 pending，应作为后续阶段 7 分支继续实施。
+- 阶段 8 字幕分支已完成，字幕封装和硬字幕烧录均通过单元测试、真实 FFmpeg smoke、Browser fallback 和 Tauri release 打包验证；倍速导出仍留到后续独立分支。
 
 ## 资源
 - README.md
@@ -241,6 +259,7 @@
 - 阶段 6 已用 in-app Browser 打开 `http://127.0.0.1:1421` 验证普通浏览器 fallback：URL/title 正确、页面非空、显示“需要 Tauri 桌面运行时”、无 console error/warn、旧 Null 输出文案消失。
 - 批量增强后再次用 in-app Browser 验证普通浏览器 fallback：转换页显示“批量选择媒体”“选择多个文件”“输出目录”和批量规则提示，控制台无 error/warn。
 - 阶段 7 截图分支已用 in-app Browser 打开 `http://127.0.0.1:1421` 并切到“截图”：显示“选择单个视频”“截图参数”、PNG/JPG 和 Tauri runtime fallback，console warn/error 数量为 0。
+- 阶段 8 字幕分支已用 in-app Browser 打开 `http://127.0.0.1:1421` 并切到“字幕”：显示“选择单个视频”“封装字幕”“烧录字幕”“外挂字幕”“字幕编码”“输出目录”和 Tauri runtime fallback，切换烧录后可见 `-burned-subtitles` 命名和高级设置中的“字体目录”，console warn/error 数量为 0。
 
 ---
 *每执行2次查看/浏览器/搜索操作后更新此文件*

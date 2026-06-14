@@ -1,7 +1,7 @@
 use crate::{
     errors::AppError,
     ffmpeg::command_builder::{
-        AudioExtractRequest, ConvertRequest, ScreenshotRequest, TrimRequest,
+        AudioExtractRequest, ConvertRequest, ScreenshotRequest, SubtitleRequest, TrimRequest,
     },
     jobs::{JobManager, JobQueueConfig, JobRecord},
 };
@@ -65,6 +65,15 @@ pub fn enqueue_audio_extract_job(
     request: AudioExtractRequest,
 ) -> Result<JobRecord, AppError> {
     job_manager.enqueue_audio_extract_job(app, request)
+}
+
+#[tauri::command]
+pub fn enqueue_subtitle_job(
+    app: tauri::AppHandle,
+    job_manager: tauri::State<'_, JobManager>,
+    request: SubtitleRequest,
+) -> Result<JobRecord, AppError> {
+    job_manager.enqueue_subtitle_job(app, request)
 }
 
 #[tauri::command]

@@ -23,7 +23,8 @@ export type JobKind =
   | "convert"
   | "trim"
   | "screenshot"
-  | "audioExtract";
+  | "audioExtract"
+  | "subtitle";
 
 export type ConvertMediaKind = "video" | "audio" | "image";
 
@@ -90,6 +91,28 @@ export type AudioExtractRequest = {
   overwrite: boolean;
   durationSec?: number;
   sourceAudioStreamCount?: number;
+};
+
+export type SubtitleMode = "embed" | "burn";
+
+export type SubtitleOutputFormat = "mp4" | "mkv";
+
+export type SubtitleInputFormat = "srt" | "ass";
+
+export type SubtitleEncoding = "auto" | "utf8" | "gbk";
+
+export type SubtitleRequest = {
+  inputPath: string;
+  subtitlePath: string;
+  outputPath: string;
+  mode: SubtitleMode;
+  outputFormat: SubtitleOutputFormat;
+  inputFormat: SubtitleInputFormat;
+  encoding: SubtitleEncoding;
+  fontsDir?: string;
+  overwrite: boolean;
+  durationSec?: number;
+  sourceVideoStreamCount?: number;
 };
 
 export type ConvertJobDraft = {

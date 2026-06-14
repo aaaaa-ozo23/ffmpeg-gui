@@ -26,6 +26,7 @@ import type {
   MediaProbeState,
   ScreenshotRequest,
   SidecarHealthState,
+  SubtitleRequest,
   TrimRequest,
 } from "./types";
 import { AppSidebar } from "../components/AppSidebar";
@@ -38,6 +39,7 @@ import {
   enqueueAudioExtractJob,
   enqueueConvertJob,
   enqueueScreenshotJob,
+  enqueueSubtitleJob,
   enqueueTrimJob,
   getJobQueueConfig,
   listenToJobEvents,
@@ -73,6 +75,10 @@ function App() {
       status: "empty",
     });
   const [audioMediaProbeState, setAudioMediaProbeState] =
+    useState<MediaProbeState>({
+      status: "empty",
+    });
+  const [subtitleMediaProbeState, setSubtitleMediaProbeState] =
     useState<MediaProbeState>({
       status: "empty",
     });
@@ -467,6 +473,36 @@ function App() {
     }
   }, []);
 
+  const handleSelectSubtitleMedia = useCallback(async () => {
+    let selectedPath: string | null = null;
+
+    try {
+      selectedPath = await selectMediaFile();
+      if (!selectedPath) {
+        return;
+      }
+
+      setSubtitleMediaProbeState({
+        status: "loading",
+        path: selectedPath,
+      });
+      setJobCommandError(undefined);
+
+      const media = await probeMedia(selectedPath);
+      setSubtitleMediaProbeState({
+        status: "ready",
+        media,
+        summary: toMediaSummary(media),
+      });
+    } catch (error) {
+      setSubtitleMediaProbeState({
+        status: "error",
+        path: selectedPath ?? undefined,
+        error: error as AppErrorPayload,
+      });
+    }
+  }, []);
+
   const handleEnqueueScreenshotJob = useCallback(
     async (request: ScreenshotRequest) => {
       try {
@@ -486,6 +522,21 @@ function App() {
     async (request: AudioExtractRequest) => {
       try {
         const job = await enqueueAudioExtractJob(request);
+        setJobs((currentJobs) => upsertJob(currentJobs, job));
+        setJobCommandError(undefined);
+        setInspectorTab("tasks");
+        setActiveFeatureId("jobs");
+      } catch (error) {
+        setJobCommandError(error as AppErrorPayload);
+      }
+    },
+    [],
+  );
+
+  const handleEnqueueSubtitleJob = useCallback(
+    async (request: SubtitleRequest) => {
+      try {
+        const job = await enqueueSubtitleJob(request);
         setJobs((currentJobs) => upsertJob(currentJobs, job));
         setJobCommandError(undefined);
         setInspectorTab("tasks");
@@ -628,7 +679,9 @@ function App() {
         ? screenshotMediaProbeState.status === "loading"
         : activeFeatureId === "audio"
           ? audioMediaProbeState.status === "loading"
-          : mediaProbeState.status === "loading";
+          : activeFeatureId === "subtitle"
+            ? subtitleMediaProbeState.status === "loading"
+            : mediaProbeState.status === "loading";
   const handleHeaderSelectMedia =
     activeFeatureId === "trim"
       ? handleSelectTrimMedia
@@ -636,7 +689,9 @@ function App() {
         ? handleSelectScreenshotMedia
         : activeFeatureId === "audio"
           ? handleSelectAudioMedia
-          : handleSelectMedia;
+          : activeFeatureId === "subtitle"
+            ? handleSelectSubtitleMedia
+            : handleSelectMedia;
 
   return (
     <main className="app-window">
@@ -724,6 +779,7 @@ function App() {
           batchMediaState={batchMediaState}
           screenshotMediaState={screenshotMediaProbeState}
           audioMediaState={audioMediaProbeState}
+          subtitleMediaState={subtitleMediaProbeState}
           jobs={jobs}
           jobQueueConfig={jobQueueConfig}
           jobsRuntime={jobsRuntime}
@@ -732,12 +788,14 @@ function App() {
           onSelectTrimMedia={handleSelectTrimMedia}
           onSelectScreenshotMedia={handleSelectScreenshotMedia}
           onSelectAudioMedia={handleSelectAudioMedia}
+          onSelectSubtitleMedia={handleSelectSubtitleMedia}
           onRemoveBatchItem={handleRemoveBatchItem}
           onMoveBatchItem={handleMoveBatchItem}
           onEnqueueConvertJobs={handleEnqueueConvertJobs}
           onEnqueueTrimJob={handleEnqueueTrimJob}
           onEnqueueScreenshotJob={handleEnqueueScreenshotJob}
           onEnqueueAudioExtractJob={handleEnqueueAudioExtractJob}
+          onEnqueueSubtitleJob={handleEnqueueSubtitleJob}
           onCancelJob={handleCancelJob}
           onClearFinishedJobs={handleClearFinishedJobs}
           onMaxConcurrentChange={handleMaxConcurrentChange}

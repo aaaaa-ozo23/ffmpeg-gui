@@ -791,6 +791,10 @@ input:focus-visible {
   font-size: 0.84rem;
 }
 
+.advanced-settings .advanced-output-row {
+  margin: 0 10px 10px;
+}
+
 .checkbox-field {
   display: flex;
   align-items: center;

@@ -18,6 +18,7 @@ pub fn run() {
             commands::jobs::enqueue_convert_job,
             commands::jobs::enqueue_null_job,
             commands::jobs::enqueue_screenshot_job,
+            commands::jobs::enqueue_subtitle_job,
             commands::jobs::enqueue_trim_job,
             commands::jobs::get_job,
             commands::jobs::get_job_queue_config,
